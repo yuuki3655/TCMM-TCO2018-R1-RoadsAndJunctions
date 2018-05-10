@@ -1,0 +1,7 @@
+*.png
+*.dSYM
+*.out
+main
+debug
+*.class
+release
