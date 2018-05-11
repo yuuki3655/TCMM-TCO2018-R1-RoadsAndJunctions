@@ -105,7 +105,7 @@ class RoadsAndJunctions {
     return next_available_junction_id_++;
   }
 
-  void addJunction(int x, int y) {
+  int addJunction(int x, int y) {
     int id = generateJunctionId();
     Junction junction;
     junction.id = id;
@@ -128,11 +128,14 @@ class RoadsAndJunctions {
     #undef ADD_ROAD
 
     junctions.emplace(id, move(junction));
+    areamap[x][y] = 2;
+    return id;
   }
 
   void removeJunction(int junction_id) {
     Junction junction = junctions[junction_id];
     junctions.erase(junction_id);
+    areamap[junction.x][junction.y] = 0;
 
     #define REMOVE_ROAD(x) \
       Road road; \
@@ -148,6 +151,21 @@ class RoadsAndJunctions {
       REMOVE_ROAD(existing_junction.second);
     }
     #undef REMOVE_ROAD
+  }
+
+  double calculateScore() {
+    double score = 0;
+    const int numPointsToConnect = NC + junctions.size();
+    DisjointSet dset;
+    for (const Road& road : sorted_roads) {
+      int id1 = dset.FindSet(road.from);
+      int id2 = dset.FindSet(road.to);
+      if (id1 == id2) continue;
+      dset.MergeSet(id1, id2);
+      score += road.distance;
+      if (dset.LargestSetSize() == numPointsToConnect) return score;
+    }
+    return score;
   }
 
  public:
@@ -183,12 +201,26 @@ class RoadsAndJunctions {
     }
 
     bool updated = true;
+    double best_score = calculateScore();
+    int best_x, best_y;
     while (updated) {
       updated = false;
       for (int i = 0; i < S; ++i) {
         for (int j = 0; j < S; ++j) {
           if (areamap[i][j]) continue;
+          int jid = addJunction(i, j);
+          double score = calculateScore();
+          if (score < best_score) {
+            best_score = score;
+            best_x = i;
+            best_y = j;
+            updated = true;
+          }
+          removeJunction(jid);
         }
+      }
+      if (updated) {
+        addJunction(best_x, best_y);
       }
     }
 
@@ -206,8 +238,6 @@ class RoadsAndJunctions {
   }
 
   vector<int> buildRoads(vector<int> junctionStatus) {
-    DisjointSet dset;
-
     const int numValidJunction =
         count(junctionStatus.begin(), junctionStatus.end(), 1);
     const int numPointsToConnect = NC + numValidJunction;
@@ -217,6 +247,7 @@ class RoadsAndJunctions {
     };
 
     // Kruskal's algorithm.
+    DisjointSet dset;
     vector<int> result;
     result.reserve(2 * (numPointsToConnect - 1));
     for (const Road& road : sorted_roads) {
@@ -224,8 +255,10 @@ class RoadsAndJunctions {
       int id1 = dset.FindSet(road.from);
       int id2 = dset.FindSet(road.to);
       if (id1 == id2) continue;
-      result.push_back(road.from);
-      result.push_back(road.to);
+      result.push_back(
+          road.from < NC ? road.from : NC + junction_id_to_status_index_[road.from]);
+      result.push_back(
+          road.to < NC ? road.to : NC + junction_id_to_status_index_[road.to]);
       dset.MergeSet(id1, id2);
       if (dset.LargestSetSize() == numPointsToConnect) break;
     }

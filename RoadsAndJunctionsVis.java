@@ -105,7 +105,7 @@ public class RoadsAndJunctionsVis {
       }
       catch (Exception e) {
         addFatalError("An exception occurred while generating test case.");
-        e.printStackTrace(); 
+        e.printStackTrace();
         return "";
       }
     }
@@ -126,7 +126,7 @@ public class RoadsAndJunctionsVis {
 
             // first build the junctions
             int[] junctionsRet;
-            try { 
+            try {
                 junctionsRet = buildJunctions(S, citiesArg, jCost, jFailProb);
             } catch (Exception e) {
                 addFatalError("Failed to get result from buildJunctions.");
@@ -168,7 +168,7 @@ public class RoadsAndJunctionsVis {
 
             // next build the roads (passing information about junctions to the method)
             int[] roadsRet;
-            try { 
+            try {
                 roadsRet = buildRoads(junctOk);
             } catch (Exception e) {
                 addFatalError("Failed to get result from buildRoads.");
@@ -189,7 +189,7 @@ public class RoadsAndJunctionsVis {
                 addFatalError("You can build at most " + maxR + " roads.");
                 return -1.0;
             }
-            
+
             HashSet<Integer> rUsed = new HashSet<>();
             roadS = new int[NR];
             roadE = new int[NR];
@@ -203,7 +203,7 @@ public class RoadsAndJunctionsVis {
                     addFatalError("You can only build roads between distinct points.");
                     return -1.0;
                 }
-                if (roadsRet[2*i] >= NC && junctOk[roadsRet[2*i] - NC] == 0 || 
+                if (roadsRet[2*i] >= NC && junctOk[roadsRet[2*i] - NC] == 0 ||
                     roadsRet[2*i+1] >= NC && junctOk[roadsRet[2*i+1] - NC] == 0) {
                     addFatalError("You can not build a road to a dysfunctional junction.");
                     return -1.0;
@@ -212,7 +212,7 @@ public class RoadsAndJunctionsVis {
                 roadE[i] = Math.max(roadsRet[2*i], roadsRet[2*i+1]);
                 Integer road = new Integer(roadToInt(roadS[i], roadE[i]));
                 if (rUsed.contains(road)) {
-                    addFatalError("You can only build one road between each pair of points.");
+                    addFatalError("You can only build one road between each pair of points. " + roadS[i] + " -> " + roadE[i]);
                     return -1.0;
                 }
                 rUsed.add(road);
@@ -276,9 +276,9 @@ public class RoadsAndJunctionsVis {
         }
         return totalRoadLength + jCost * NJ;
       }
-      catch (Exception e) { 
+      catch (Exception e) {
         addFatalError("An exception occurred while trying to get your program's results.");
-        e.printStackTrace(); 
+        e.printStackTrace();
         return -1.0;
       }
     }
@@ -371,7 +371,7 @@ public class RoadsAndJunctionsVis {
         }
         System.out.println("Score = " + runTest(seed));
         if (proc != null)
-            try { proc.destroy(); } 
+            try { proc.destroy(); }
             catch (Exception e) { e.printStackTrace(); }
       }
       catch (Exception e) { e.printStackTrace(); }
