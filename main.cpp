@@ -13,12 +13,14 @@ using namespace std;
 #ifdef LOCAL_DEBUG_MODE
 #define debug(x) cerr << x;
 #define debug2(x) cerr << x;
-#elseif TOPCODER_TEST_MODE
+#else
+#ifdef TOPCODER_TEST_MODE
 #define debug(x) cerr << x;
 #define debug2(x) ;
 #else
 #define debug(x) ;
 #define debug2(x) ;
+#endif
 #endif
 
 class DisjointSet {
