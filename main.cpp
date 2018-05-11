@@ -146,8 +146,8 @@ class RoadsAndJunctions {
 
     #define ADD_ROAD(x) \
       Road road; \
-      road.from = x.id; \
-      road.to = junction.id; \
+      road.from = min(x.id, junction.id); \
+      road.to = max(x.id, junction.id); \
       road.distance = distance(x, junction); \
       sorted_roads.emplace(move(road))
 
@@ -171,8 +171,8 @@ class RoadsAndJunctions {
 
     #define REMOVE_ROAD(x) \
       Road road; \
-      road.from = x.id; \
-      road.to = junction.id; \
+      road.from = min(x.id, junction.id); \
+      road.to = max(x.id, junction.id); \
       road.distance = distance(x, junction); \
       sorted_roads.erase(road)
 
@@ -200,29 +200,30 @@ class RoadsAndJunctions {
     return score;
   }
 
-  void optimize(int granularity) {
-    debug("start optimize: granularity = " << granularity);
+  double optimize(int granularity) {
+    debug("start optimize: granularity = " << granularity << endl);
 
     bool updated = true;
     double best_score = calculateScore();
     double prev_score = best_score;
     int best_x, best_y;
-    double prev_elapsed_ntime = 0;
     while (updated && junctions.size() + 1 < MAX_NJ) {
-      double loop_start_ntime = normalizedTime();
-      if (loop_start_ntime + prev_elapsed_ntime > 0.7) {
-        debug("main loop timed out" << endl);
+      if (normalizedTime() > 0.8) {
+        debug("main loop timed out" << endl;);
         break;
       }
 
-      debug2("loop_start_ntime = " << loop_start_ntime << endl);
-      debug2("prev_elapsed_ntime = " << prev_elapsed_ntime << endl);
-
       updated = false;
-      for (int i = 0; i < granularity; ++i) {
-        for (int j = 0; j < granularity; ++j) {
+      for (int i = 0; i <= granularity; ++i) {
+        if (normalizedTime() > 0.8) {
+          debug("main loop timed out" << endl;);
+          break;
+        }
+        for (int j = 0; j <= granularity; ++j) {
           int x = i * S / granularity + S / (granularity * 2);
           int y = j * S / granularity + S / (granularity * 2);
+          x = min(x, S);
+          y = min(y, S);
           if (areamap[x][y]) continue;
           int jid = addJunction(x, y);
           double score = calculateScore();
@@ -239,14 +240,14 @@ class RoadsAndJunctions {
         if ((prev_score - best_score) * (1.0 - F_PROB) > J_COST) {
           debug2("prev: " << prev_score << ", now: " << best_score << endl);
           addJunction(best_x, best_y);
+          prev_score = best_score;
         } else {
           updated = false;
         }
-        prev_score = best_score;
       }
-
-      prev_elapsed_ntime = normalizedTime() - loop_start_ntime;
     }
+    debug("score = " << prev_score << endl);
+    return prev_score;
   }
 
  public:
@@ -286,7 +287,24 @@ class RoadsAndJunctions {
       }
     }
 
-    optimize(50);
+    double best_score = 1e8;
+    unordered_map<int, Junction> best_junctions;
+    for (int granularity = 32; ; granularity *= 2) {
+      granularity = min(granularity, S);
+      double score = optimize(granularity);
+      if (score < best_score) {
+        best_score = score;
+        best_junctions = junctions;
+      }
+      while (!junctions.empty()) {
+        removeJunction(junctions.begin()->first);
+      }
+      if (granularity == S) break;
+      if (normalizedTime() > 0.7) break;
+    }
+    for (const auto& junction : best_junctions) {
+      addJunction(junction.second.x, junction.second.y);
+    }
 
     vector<int> retValue;
     retValue.reserve(junctions.size() * 2);
