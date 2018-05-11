@@ -1,4 +1,4 @@
-// #define LOCAL_DEBUG_MODE
+// #define TOPCODER_TEST_MODE
 
 #include <algorithm>
 #include <cmath>
@@ -6,8 +6,20 @@
 #include <vector>
 #include <set>
 #include <unordered_map>
+#include <sys/time.h>
 
 using namespace std;
+
+#ifdef LOCAL_DEBUG_MODE
+#define debug(x) cerr << x;
+#define debug2(x) cerr << x;
+#elif TOPCODER_TEST_MODE
+#define debug(x) cerr << x;
+#define debug2(x) ;
+#else
+#define debug(x) ;
+#define debug2(x) ;
+#endif
 
 class DisjointSet {
 public:
@@ -97,6 +109,23 @@ class RoadsAndJunctions {
   unordered_map<int, Junction> junctions;
   unordered_map<int, int> junction_id_to_status_index_;
 
+  double startTimeSec;
+
+  double getTimeSec() {
+  	static timeval tv;
+  	gettimeofday(&tv, NULL);
+  	return tv.tv_sec + 1e-6 * tv.tv_usec;
+  }
+
+  void startTimer() {
+    startTimeSec = getTimeSec();
+  }
+
+  double normalizedTime() {
+    double diff = getTimeSec() - startTimeSec;
+    return diff / 10.0;
+  }
+
   int next_available_junction_id_;
   void resetJunctionId() {
     next_available_junction_id_ = NC;
@@ -171,6 +200,8 @@ class RoadsAndJunctions {
  public:
   vector<int> buildJunctions(int S, vector<int> city_locations,
                              double junctionCost, double failureProbability) {
+    startTimer();
+
     NC = city_locations.size() / 2;
     MAX_NJ = 2 * NC;
 
@@ -204,9 +235,19 @@ class RoadsAndJunctions {
     double best_score = calculateScore();
     double prev_score = best_score;
     int best_x, best_y;
+    double prev_elapsed_ntime = 0;
     while (updated && junctions.size() + 1 < MAX_NJ) {
+      double loop_start_ntime = normalizedTime();
+      if (loop_start_ntime + prev_elapsed_ntime > 0.7) {
+        debug("main loop timed out" << endl);
+        break;
+      }
+
+      debug2("loop_start_ntime = " << loop_start_ntime << endl);
+      debug2("prev_elapsed_ntime = " << prev_elapsed_ntime << endl);
+
       updated = false;
-      const int GRANULARITY = 100;
+      const int GRANULARITY = 50;
       for (int i = 0; i < GRANULARITY; ++i) {
         for (int j = 0; j < GRANULARITY; ++j) {
           int x = i * S / GRANULARITY + S / (GRANULARITY * 2);
@@ -225,13 +266,15 @@ class RoadsAndJunctions {
       }
       if (updated) {
         if ((prev_score - best_score) * (1.0 - failureProbability) > junctionCost) {
-          cerr << "prev: " << prev_score << ", now: " << best_score << endl;
+          debug2("prev: " << prev_score << ", now: " << best_score << endl);
           addJunction(best_x, best_y);
         } else {
           updated = false;
         }
         prev_score = best_score;
       }
+
+      prev_elapsed_ntime = normalizedTime() - loop_start_ntime;
     }
 
     vector<int> retValue;
@@ -243,6 +286,8 @@ class RoadsAndJunctions {
           junction.second.id,
           junction_id_to_status_index_.size());
     }
+
+    debug("buildJunctions finished: " << normalizedTime() << endl);
 
     return retValue;
   }

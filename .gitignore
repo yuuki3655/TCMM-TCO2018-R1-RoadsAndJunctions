@@ -2,6 +2,6 @@
 *.dSYM
 *.out
 main
-debug
+topcoder
 *.class
 release
