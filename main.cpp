@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <vector>
+#include <set>
 
 using namespace std;
 
@@ -43,6 +44,22 @@ struct Road {
   double distance;
 };
 
+inline bool operator<(const Road& a, const Road& b) {
+  if (a.distance < b.distance) {
+    return true;
+  }
+  if (a.distance > b.distance) {
+    return false;
+  }
+  if (a.to < b.to) {
+    return true;
+  }
+  if (a.to > b.to) {
+    return false;
+  }
+  return a.from < b.from;
+}
+
 struct City {
   int id;
   int x;
@@ -68,7 +85,7 @@ class RoadsAndJunctions {
   int NC;
   int MAX_NJ;
   vector<City> cities;
-  vector<Road> sorted_roads;
+  set<Road> sorted_roads;
   vector<vector<int>> areamap;
   vector<Junction> junctions;
 
@@ -92,21 +109,15 @@ class RoadsAndJunctions {
       areamap[city.x][city.y] = 1;
     }
 
-    sorted_roads.reserve(NC * (NC - 1) / 2);
     for (int i = 0; i < NC; ++i) {
       for (int j = i + 1; j < NC; ++j) {
         Road road;
         road.from = i;
         road.to = j;
         road.distance = distance(cities[i], cities[j]);
-        sorted_roads.emplace_back(move(road));
+        sorted_roads.emplace(move(road));
       }
     }
-    sort(sorted_roads.begin(),
-         sorted_roads.end(),
-         [](const Road& a, const Road& b){
-           return a.distance < b.distance;
-         });
 
     bool updated = true;
     while (updated) {
@@ -139,10 +150,15 @@ class RoadsAndJunctions {
     const int numValidJunction = count(junctionStatus.begin(), junctionStatus.end(), 1);
     const int numPointsToConnect = NC + numValidJunction;
 
+    auto is_valid_point = [this,&junctionStatus](int id){
+      return id < NC || junctionStatus[id - NC];
+    };
+
     // Kruskal's algorithm.
     vector<int> result;
     result.reserve(2 * (numPointsToConnect - 1));
     for (const Road& road : sorted_roads) {
+      if (!is_valid_point(road.from) || !is_valid_point(road.to)) continue;
       int id1 = dset.FindSet(road.from);
       int id2 = dset.FindSet(road.to);
       if (id1 == id2) continue;
