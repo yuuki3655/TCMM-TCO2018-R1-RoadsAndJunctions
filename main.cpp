@@ -100,9 +100,12 @@ inline double distance(const S& a, const T& b) {
 
 class RoadsAndJunctions {
  private:
-  // Number of cities.
-  int NC;
+  int S;
+  int NC;  // Number of cities.
   int MAX_NJ;
+  double J_COST;
+  double F_PROB;
+
   vector<City> cities;
   set<Road> sorted_roads;
   vector<vector<int>> areamap;
@@ -197,13 +200,65 @@ class RoadsAndJunctions {
     return score;
   }
 
+  void optimize(int granularity) {
+    debug("start optimize: granularity = " << granularity);
+
+    bool updated = true;
+    double best_score = calculateScore();
+    double prev_score = best_score;
+    int best_x, best_y;
+    double prev_elapsed_ntime = 0;
+    while (updated && junctions.size() + 1 < MAX_NJ) {
+      double loop_start_ntime = normalizedTime();
+      if (loop_start_ntime + prev_elapsed_ntime > 0.7) {
+        debug("main loop timed out" << endl);
+        break;
+      }
+
+      debug2("loop_start_ntime = " << loop_start_ntime << endl);
+      debug2("prev_elapsed_ntime = " << prev_elapsed_ntime << endl);
+
+      updated = false;
+      for (int i = 0; i < granularity; ++i) {
+        for (int j = 0; j < granularity; ++j) {
+          int x = i * S / granularity + S / (granularity * 2);
+          int y = j * S / granularity + S / (granularity * 2);
+          if (areamap[x][y]) continue;
+          int jid = addJunction(x, y);
+          double score = calculateScore();
+          if (score < best_score) {
+            best_score = score;
+            best_x = x;
+            best_y = y;
+            updated = true;
+          }
+          removeJunction(jid);
+        }
+      }
+      if (updated) {
+        if ((prev_score - best_score) * (1.0 - F_PROB) > J_COST) {
+          debug2("prev: " << prev_score << ", now: " << best_score << endl);
+          addJunction(best_x, best_y);
+        } else {
+          updated = false;
+        }
+        prev_score = best_score;
+      }
+
+      prev_elapsed_ntime = normalizedTime() - loop_start_ntime;
+    }
+  }
+
  public:
-  vector<int> buildJunctions(int S, vector<int> city_locations,
+  vector<int> buildJunctions(int s, vector<int> city_locations,
                              double junctionCost, double failureProbability) {
     startTimer();
 
+    S = s;
     NC = city_locations.size() / 2;
     MAX_NJ = 2 * NC;
+    J_COST = junctionCost;
+    F_PROB = failureProbability;
 
     resetJunctionId();
 
@@ -231,51 +286,7 @@ class RoadsAndJunctions {
       }
     }
 
-    bool updated = true;
-    double best_score = calculateScore();
-    double prev_score = best_score;
-    int best_x, best_y;
-    double prev_elapsed_ntime = 0;
-    while (updated && junctions.size() + 1 < MAX_NJ) {
-      double loop_start_ntime = normalizedTime();
-      if (loop_start_ntime + prev_elapsed_ntime > 0.7) {
-        debug("main loop timed out" << endl);
-        break;
-      }
-
-      debug2("loop_start_ntime = " << loop_start_ntime << endl);
-      debug2("prev_elapsed_ntime = " << prev_elapsed_ntime << endl);
-
-      updated = false;
-      const int GRANULARITY = 50;
-      for (int i = 0; i < GRANULARITY; ++i) {
-        for (int j = 0; j < GRANULARITY; ++j) {
-          int x = i * S / GRANULARITY + S / (GRANULARITY * 2);
-          int y = j * S / GRANULARITY + S / (GRANULARITY * 2);
-          if (areamap[x][y]) continue;
-          int jid = addJunction(x, y);
-          double score = calculateScore();
-          if (score < best_score) {
-            best_score = score;
-            best_x = x;
-            best_y = y;
-            updated = true;
-          }
-          removeJunction(jid);
-        }
-      }
-      if (updated) {
-        if ((prev_score - best_score) * (1.0 - failureProbability) > junctionCost) {
-          debug2("prev: " << prev_score << ", now: " << best_score << endl);
-          addJunction(best_x, best_y);
-        } else {
-          updated = false;
-        }
-        prev_score = best_score;
-      }
-
-      prev_elapsed_ntime = normalizedTime() - loop_start_ntime;
-    }
+    optimize(50);
 
     vector<int> retValue;
     retValue.reserve(junctions.size() * 2);
