@@ -76,6 +76,11 @@ public class RoadsAndJunctionsVis {
             NC = maxNC;
             jCost = maxJC;
             jFailProb = maxFailProb;
+        } else if (seed == -1) {
+            S = maxS;
+            NC = maxNC;
+            jCost = minJC;
+            jFailProb = minFailProb;
         }
 
         // generate the cities' coordinates (all distinct)

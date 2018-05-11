@@ -98,7 +98,7 @@ class RoadsAndJunctions {
   unordered_map<int, int> junction_id_to_status_index_;
 
   int next_available_junction_id_;
-  int resetJunctionId() {
+  void resetJunctionId() {
     next_available_junction_id_ = NC;
   }
   int generateJunctionId() {
@@ -202,25 +202,35 @@ class RoadsAndJunctions {
 
     bool updated = true;
     double best_score = calculateScore();
+    double prev_score = best_score;
     int best_x, best_y;
-    while (updated) {
+    while (updated && junctions.size() + 1 < MAX_NJ) {
       updated = false;
-      for (int i = 0; i < S; ++i) {
-        for (int j = 0; j < S; ++j) {
-          if (areamap[i][j]) continue;
-          int jid = addJunction(i, j);
+      const int GRANULARITY = 100;
+      for (int i = 0; i < GRANULARITY; ++i) {
+        for (int j = 0; j < GRANULARITY; ++j) {
+          int x = i * S / GRANULARITY + S / (GRANULARITY * 2);
+          int y = j * S / GRANULARITY + S / (GRANULARITY * 2);
+          if (areamap[x][y]) continue;
+          int jid = addJunction(x, y);
           double score = calculateScore();
           if (score < best_score) {
             best_score = score;
-            best_x = i;
-            best_y = j;
+            best_x = x;
+            best_y = y;
             updated = true;
           }
           removeJunction(jid);
         }
       }
       if (updated) {
-        addJunction(best_x, best_y);
+        if ((prev_score - best_score) * (1.0 - failureProbability) > junctionCost) {
+          cerr << "prev: " << prev_score << ", now: " << best_score << endl;
+          addJunction(best_x, best_y);
+        } else {
+          updated = false;
+        }
+        prev_score = best_score;
       }
     }
 
