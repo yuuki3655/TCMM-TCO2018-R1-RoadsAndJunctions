@@ -5,13 +5,13 @@
 #include <iostream>
 #include <vector>
 #include <set>
+#include <unordered_map>
 
 using namespace std;
 
 class DisjointSet {
 public:
-  DisjointSet(int size) : id_(size, -1){};
-  bool MergeSet(int x, int y) {
+  inline bool MergeSet(int x, int y) {
     x = FindSet(x);
     y = FindSet(y);
     if (x != y) {
@@ -23,13 +23,20 @@ public:
     }
     return x != y;
   }
-  int FindSet(int x) { return id_[x] < 0 ? x : id_[x] = FindSet(id_[x]); }
-  int Size(int x) { return -id_[FindSet(x)]; }
-  int LargestSetSize() { return largest_set_size_; }
+  inline int FindSet(int x) {
+    int id = id_.emplace(x, -1).first->second;
+    return id < 0 ? x : id_[x] = FindSet(id);
+  }
+  inline int Size(int x) {
+    return -id_[FindSet(x)];
+  }
+  inline int LargestSetSize() {
+    return largest_set_size_;
+  }
 
 private:
-  vector<int> id_;
-  int largest_set_size_ = 0;
+  unordered_map<int, int> id_;
+  int largest_set_size_ = 1;
 };
 
 const int MAX_C = 1000;
@@ -72,8 +79,8 @@ struct Junction {
   int y;
 };
 
-template<typename T>
-double distance(const T& a, const T& b) {
+template<typename S, typename T>
+inline double distance(const S& a, const T& b) {
   int dx = b.x - a.x;
   int dy = b.y - a.y;
   return sqrt(dx*dx + dy*dy);
@@ -87,13 +94,69 @@ class RoadsAndJunctions {
   vector<City> cities;
   set<Road> sorted_roads;
   vector<vector<int>> areamap;
-  vector<Junction> junctions;
+  unordered_map<int, Junction> junctions;
+  unordered_map<int, int> junction_id_to_status_index_;
+
+  int next_available_junction_id_;
+  int resetJunctionId() {
+    next_available_junction_id_ = NC;
+  }
+  int generateJunctionId() {
+    return next_available_junction_id_++;
+  }
+
+  void addJunction(int x, int y) {
+    int id = generateJunctionId();
+    Junction junction;
+    junction.id = id;
+    junction.x = x;
+    junction.y = y;
+
+    #define ADD_ROAD(x) \
+      Road road; \
+      road.from = x.id; \
+      road.to = junction.id; \
+      road.distance = distance(x, junction); \
+      sorted_roads.emplace(move(road))
+
+    for (const auto& city : cities) {
+      ADD_ROAD(city);
+    }
+    for (const auto& existing_junction : junctions) {
+      ADD_ROAD(existing_junction.second);
+    }
+    #undef ADD_ROAD
+
+    junctions.emplace(id, move(junction));
+  }
+
+  void removeJunction(int junction_id) {
+    Junction junction = junctions[junction_id];
+    junctions.erase(junction_id);
+
+    #define REMOVE_ROAD(x) \
+      Road road; \
+      road.from = x.id; \
+      road.to = junction.id; \
+      road.distance = distance(x, junction); \
+      sorted_roads.erase(road)
+
+    for (const auto& city : cities) {
+      REMOVE_ROAD(city);
+    }
+    for (const auto& existing_junction : junctions) {
+      REMOVE_ROAD(existing_junction.second);
+    }
+    #undef REMOVE_ROAD
+  }
 
  public:
   vector<int> buildJunctions(int S, vector<int> city_locations,
                              double junctionCost, double failureProbability) {
     NC = city_locations.size() / 2;
     MAX_NJ = 2 * NC;
+
+    resetJunctionId();
 
     cities.reserve(NC);
     for (int i = 0; i < NC; ++i) {
@@ -132,26 +195,25 @@ class RoadsAndJunctions {
     vector<int> retValue;
     retValue.reserve(junctions.size() * 2);
     for (const auto& junction : junctions) {
-      retValue.push_back(junction.x);
-      retValue.push_back(junction.y);
+      retValue.push_back(junction.second.x);
+      retValue.push_back(junction.second.y);
+      junction_id_to_status_index_.emplace(
+          junction.second.id,
+          junction_id_to_status_index_.size());
     }
 
     return retValue;
   }
 
-  void addJunction(const Junction& junction) {
-    for (const auto& city : cities) {
-    }
-  }
-
   vector<int> buildRoads(vector<int> junctionStatus) {
-    DisjointSet dset(NC + junctionStatus.size());
+    DisjointSet dset;
 
-    const int numValidJunction = count(junctionStatus.begin(), junctionStatus.end(), 1);
+    const int numValidJunction =
+        count(junctionStatus.begin(), junctionStatus.end(), 1);
     const int numPointsToConnect = NC + numValidJunction;
 
     auto is_valid_point = [this,&junctionStatus](int id){
-      return id < NC || junctionStatus[id - NC];
+      return id < NC || junctionStatus[junction_id_to_status_index_[id]];
     };
 
     // Kruskal's algorithm.
