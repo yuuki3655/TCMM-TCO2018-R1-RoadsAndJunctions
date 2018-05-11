@@ -13,7 +13,7 @@ using namespace std;
 #ifdef LOCAL_DEBUG_MODE
 #define debug(x) cerr << x;
 #define debug2(x) cerr << x;
-#elif TOPCODER_TEST_MODE
+#elseif TOPCODER_TEST_MODE
 #define debug(x) cerr << x;
 #define debug2(x) ;
 #else
