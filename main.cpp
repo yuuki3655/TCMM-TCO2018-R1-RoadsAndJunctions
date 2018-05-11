@@ -43,32 +43,53 @@ struct Road {
   double distance;
 };
 
+struct City {
+  int id;
+  int x;
+  int y;
+};
+
+struct Junction {
+  int id;
+  int x;
+  int y;
+};
+
+template<typename T>
+double distance(const T& a, const T& b) {
+  int dx = b.x - a.x;
+  int dy = b.y - a.y;
+  return sqrt(dx*dx + dy*dy);
+}
+
 class RoadsAndJunctions {
  private:
   // Number of cities.
   int NC;
   int MAX_NJ;
-  vector<vector<double>> distances;
+  vector<City> cities;
   vector<Road> sorted_roads;
+  vector<vector<int>> areamap;
+  vector<Junction> junctions;
 
  public:
-  vector<int> buildJunctions(int S, vector<int> cities, double junctionCost,
-                             double failureProbability) {
-    NC = cities.size() / 2;
+  vector<int> buildJunctions(int S, vector<int> city_locations,
+                             double junctionCost, double failureProbability) {
+    NC = city_locations.size() / 2;
     MAX_NJ = 2 * NC;
 
-    distances.resize(NC, vector<double>(NC, 0));
+    cities.reserve(NC);
     for (int i = 0; i < NC; ++i) {
-      for (int j = 0; j < NC; ++j) {
-        if (i == j) continue;
-        int x1 = cities[2*i];
-        int y1 = cities[2*i + 1];
-        int x2 = cities[2*j];
-        int y2 = cities[2*j + 1];
-        int dx = x2 - x1;
-        int dy = y2 - y1;
-        distances[i][j] = distances[j][i] = sqrt(dx*dx + dy*dy);
-      }
+      City city;
+      city.id = i;
+      city.x = city_locations[2*i];
+      city.y = city_locations[2*i + 1];
+      cities.emplace_back(move(city));
+    }
+
+    areamap.resize(S+1, vector<int>(S+1, 0));
+    for (const auto& city : cities) {
+      areamap[city.x][city.y] = 1;
     }
 
     sorted_roads.reserve(NC * (NC - 1) / 2);
@@ -77,7 +98,7 @@ class RoadsAndJunctions {
         Road road;
         road.from = i;
         road.to = j;
-        road.distance = distances[i][j];
+        road.distance = distance(cities[i], cities[j]);
         sorted_roads.emplace_back(move(road));
       }
     }
@@ -87,7 +108,29 @@ class RoadsAndJunctions {
            return a.distance < b.distance;
          });
 
-    return vector<int>();
+    bool updated = true;
+    while (updated) {
+      updated = false;
+      for (int i = 0; i < S; ++i) {
+        for (int j = 0; j < S; ++j) {
+          if (areamap[i][j]) continue;
+        }
+      }
+    }
+
+    vector<int> retValue;
+    retValue.reserve(junctions.size() * 2);
+    for (const auto& junction : junctions) {
+      retValue.push_back(junction.x);
+      retValue.push_back(junction.y);
+    }
+
+    return retValue;
+  }
+
+  void addJunction(const Junction& junction) {
+    for (const auto& city : cities) {
+    }
   }
 
   vector<int> buildRoads(vector<int> junctionStatus) {
