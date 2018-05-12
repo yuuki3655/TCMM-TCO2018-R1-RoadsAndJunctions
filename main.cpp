@@ -209,6 +209,10 @@ class RoadsAndJunctions {
       }
       if (compute(road)) return score;
     }
+    while (tmp_road_iter != sorted_tmp_roads.end()) {
+      if (compute(*tmp_road_iter)) return score;
+      ++tmp_road_iter;
+    }
     return score;
   }
 
@@ -258,6 +262,10 @@ class RoadsAndJunctions {
         ++tmp_road_iter;
       }
       if (compute(road)) return score;
+    }
+    while (tmp_road_iter != sorted_tmp_roads.end()) {
+      if (compute(*tmp_road_iter)) return score;
+      ++tmp_road_iter;
     }
     return score;
   }
