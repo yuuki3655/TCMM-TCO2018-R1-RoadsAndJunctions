@@ -139,6 +139,52 @@ class RoadsAndJunctions {
     return next_available_junction_id_++;
   }
 
+  int tryJunction(int x, int y) const {
+    Junction junction;
+    junction.id = 100000000;  // temporary id.
+    junction.x = x;
+    junction.y = y;
+
+    set<Road> sorted_tmp_roads;
+
+    #define ADD_ROAD(x) \
+      Road road; \
+      road.from = min(x.id, junction.id); \
+      road.to = max(x.id, junction.id); \
+      road.distance = distance(x, junction); \
+      sorted_tmp_roads.emplace(move(road))
+
+    for (const auto& city : cities) {
+      ADD_ROAD(city);
+    }
+    for (const auto& existing_junction : junctions) {
+      ADD_ROAD(existing_junction.second);
+    }
+    #undef ADD_ROAD
+
+    double score = 0;
+    const int numPointsToConnect = NC + junctions.size() + 1;
+    DisjointSet dset;
+    auto compute = [&dset, &score, &numPointsToConnect](const Road& road) {
+      int id1 = dset.FindSet(road.from);
+      int id2 = dset.FindSet(road.to);
+      if (id1 == id2) return false;
+      dset.MergeSet(id1, id2);
+      score += road.distance;
+      return (dset.LargestSetSize() == numPointsToConnect);
+    };
+
+    auto tmp_road_iter = sorted_tmp_roads.begin();
+    for (const Road& road : sorted_roads) {
+      while (tmp_road_iter != sorted_tmp_roads.end() && *tmp_road_iter < road) {
+        if (compute(*tmp_road_iter)) return score;
+        ++tmp_road_iter;
+      }
+      if (compute(road)) return score;
+    }
+    return score;
+  }
+
   int addJunction(int x, int y) {
     int id = generateJunctionId();
     Junction junction;
@@ -227,15 +273,13 @@ class RoadsAndJunctions {
           x = min(x, S);
           y = min(y, S);
           if (areamap[x][y]) continue;
-          int jid = addJunction(x, y);
-          double score = calculateScore();
+          double score = tryJunction(x, y);
           if (score < best_score) {
             best_score = score;
             best_x = x;
             best_y = y;
             updated = true;
           }
-          removeJunction(jid);
         }
       }
       if (updated) {
