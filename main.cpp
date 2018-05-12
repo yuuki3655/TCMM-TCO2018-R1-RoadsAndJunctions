@@ -298,10 +298,13 @@ class RoadsAndJunctions {
                                        const Heatmap& prev_heatmap) {
     debug("start optimize: granularity = " << granularity << endl);
 
-    auto compute = [this, granularity, &prev_heatmap](
+    vector<vector<int>> banned(granularity, vector<int>(granularity, 0));
+
+    auto compute = [this, granularity, &prev_heatmap, &banned](
         int i_begin, int i_end, int j_begin, int j_end,
         double best_score, double longest_road_in_use) {
       bool updated = false;
+      double prev_score = best_score;
       int best_x, best_y, best_i, best_j;
       for (int i = i_begin; i < i_end; ++i) {
         if (normalizedTime() > 0.8) {
@@ -310,6 +313,7 @@ class RoadsAndJunctions {
         }
         for (int j = j_begin; j < j_end; ++j) {
           if (!prev_heatmap[i/2][j/2]) continue;
+          if (banned[i][j]) continue;
 
           int x = i * S / granularity + S / (granularity * 2);
           int y = j * S / granularity + S / (granularity * 2);
@@ -324,6 +328,8 @@ class RoadsAndJunctions {
             best_y = y;
             best_i = i;
             best_j = j;
+          } else if (score > prev_score) {
+            banned[i][j] = 1;
           }
         }
       }
