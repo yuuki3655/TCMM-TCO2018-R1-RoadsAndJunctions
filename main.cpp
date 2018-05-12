@@ -212,6 +212,56 @@ class RoadsAndJunctions {
     return score;
   }
 
+  double tryMoveJunction(int junction_id, int x, int y) const {
+    Junction junction;
+    junction.id = 100000000;  // temporary id.
+    junction.x = x;
+    junction.y = y;
+
+    set<Road> sorted_tmp_roads;
+
+    // Note: use define over lambda because template is not supported in
+    // lambda yet. It's coming in C++20!
+    #define ADD_ROAD(T) \
+      Road road; \
+      road.from = min(T.id, junction.id); \
+      road.to = max(T.id, junction.id); \
+      road.distance = distance(T, junction); \
+      sorted_tmp_roads.emplace(move(road))
+
+    for (const auto& city : cities) {
+      ADD_ROAD(city);
+    }
+    for (const auto& existing_junction : junctions) {
+      ADD_ROAD(existing_junction.second);
+    }
+    #undef ADD_ROAD
+
+    double score = 0;
+    const int numPointsToConnect = NC + junctions.size();
+    DisjointSet dset;
+    auto compute =
+        [&dset, &score, numPointsToConnect, junction_id](const Road& road) {
+      if (road.from == junction_id || road.to == junction_id) return false;
+      int id1 = dset.FindSet(road.from);
+      int id2 = dset.FindSet(road.to);
+      if (id1 == id2) return false;
+      dset.MergeSet(id1, id2);
+      score += road.distance;
+      return (dset.LargestSetSize() == numPointsToConnect);
+    };
+
+    auto tmp_road_iter = sorted_tmp_roads.begin();
+    for (const Road& road : sorted_roads) {
+      while (tmp_road_iter != sorted_tmp_roads.end() && *tmp_road_iter < road) {
+        if (compute(*tmp_road_iter)) return score;
+        ++tmp_road_iter;
+      }
+      if (compute(road)) return score;
+    }
+    return score;
+  }
+
   int addJunction(int x, int y) {
     int id = generateJunctionId();
     Junction junction;
@@ -411,14 +461,48 @@ class RoadsAndJunctions {
             }
           }
         }
-        if ((prev_score + J_COST) * F_PROB
-            + (best_score + J_COST) * (1.0 - F_PROB) < prev_score) {
-          addJunction(best_x, best_y);
+
+        double ev = (prev_score + J_COST) * F_PROB
+            + (best_score + J_COST) * (1.0 - F_PROB);
+        if (ev < prev_score) {
+          int added_junction_id = addJunction(best_x, best_y);
           longest_road_in_use = getLongestRoadInUse();
           heatmap[best_i][best_j] = 1;
           ++heat_count;
           debug2("prev: " << prev_score << ", now: " << best_score
                  << ", longest: " << longest_road_in_use << endl);
+
+          bool redundant_point_creation_done = false;
+          for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+              int x = max(0, min(best_x + i - 1, S));
+              int y = max(0, min(best_y + j - 1, S));
+              if (areamap[x][y]) continue;
+              double score = tryAddJunction(x, y, longest_road_in_use);
+              double failed_failed =
+                  (prev_score + J_COST * 2) * F_PROB * F_PROB;
+              double failed_success =
+                  (tryMoveJunction(added_junction_id, x, y) + J_COST * 2)
+                  * F_PROB * (1.0 - F_PROB);
+              double success_failed =
+                  (best_score + J_COST * 2) * (1.0 - F_PROB) * F_PROB;
+              double success_success =
+                  (score + J_COST * 2) * (1.0 - F_PROB) * (1.0 - F_PROB);
+              double ev2 =
+                  failed_failed + failed_success
+                  + success_failed + success_success;
+              if (ev2 < ev) {
+                debug2("adding extra points: " << ev2 << " < " << ev << endl);
+                addJunction(x, y);
+                longest_road_in_use = getLongestRoadInUse();
+                best_score = score;
+              }
+              redundant_point_creation_done = true;
+              break;
+            }
+            if (redundant_point_creation_done) break;
+          }
+
           prev_score = best_score;
         } else {
           updated = false;
@@ -515,6 +599,8 @@ class RoadsAndJunctions {
     }
 
     debug("buildJunctions finished: " << normalizedTime() << endl);
+    debug("build " << junctions.size() << " / " << MAX_NJ
+          << " junctions" << endl);
 
     return retValue;
   }
