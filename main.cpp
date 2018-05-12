@@ -293,7 +293,7 @@ class RoadsAndJunctions {
     int best_x, best_y, best_i, best_j;
     Heatmap heatmap(granularity, vector<int>(granularity, 0));
     int heat_count = 0;
-    while (updated && junctions.size() + 1 < MAX_NJ) {
+    while (updated && junctions.size() + 1 <= MAX_NJ) {
       if (normalizedTime() > 0.8) {
         debug("main loop timed out" << endl;);
         break;
