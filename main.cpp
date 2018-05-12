@@ -156,7 +156,7 @@ class RoadsAndJunctions {
     return next_available_junction_id_++;
   }
 
-  double tryJunction(int x, int y, double longest_road_in_use) const {
+  double tryAddJunction(int x, int y, double longest_road_in_use) const {
     Junction junction;
     junction.id = 100000000;  // temporary id.
     junction.x = x;
@@ -320,7 +320,7 @@ class RoadsAndJunctions {
           x = min(x, S);
           y = min(y, S);
           if (areamap[x][y]) continue;
-          double score = tryJunction(x, y, longest_road_in_use);
+          double score = tryAddJunction(x, y, longest_road_in_use);
           if (score < best_score) {
             updated = true;
             best_score = score;
@@ -387,6 +387,28 @@ class RoadsAndJunctions {
       #endif
 
       if (updated) {
+        if (granularity != S + 1) {
+          const int dsize = 5;
+          const int dstep = 5;
+
+          int original_best_x = best_x;
+          int original_best_y = best_y;
+          for (int i = 0; i < dstep; ++i) {
+            for (int j = 0; j < dstep; ++j) {
+              int x = original_best_x + (i - dstep / 2) * dsize / dstep;
+              int y = original_best_y + (j - dstep / 2) * dsize / dstep;
+              x = max(0, min(x, S));
+              y = max(0, min(y, S));
+              if (x == original_best_x && y == original_best_y) continue;
+              double score = tryAddJunction(x, y, longest_road_in_use);
+              if (score < best_score) {
+                best_score = score;
+                best_x = x;
+                best_y = y;
+              }
+            }
+          }
+        }
         if ((prev_score - best_score) * (1.0 - F_PROB) > J_COST) {
           addJunction(best_x, best_y);
           longest_road_in_use = getLongestRoadInUse();
