@@ -9,7 +9,7 @@ javac RoadsAndJunctionsVisForScoring.java
 rm -f score.txt
 
 test_case=1
-for i in $(seq 1 2); do
+for i in $(seq 1 16); do
   echo "Run "${test_case}"/116" ;
   java RoadsAndJunctionsVisForScoring -exec "./release" -seed $i >> score.txt
   test_case=$((test_case+1))
