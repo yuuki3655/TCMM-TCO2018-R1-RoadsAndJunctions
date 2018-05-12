@@ -409,7 +409,8 @@ class RoadsAndJunctions {
             }
           }
         }
-        if ((prev_score - best_score) * (1.0 - F_PROB) > J_COST) {
+        if ((prev_score + J_COST) * F_PROB
+            + (best_score + J_COST) * (1.0 - F_PROB) < prev_score) {
           addJunction(best_x, best_y);
           longest_road_in_use = getLongestRoadInUse();
           heatmap[best_i][best_j] = 1;
