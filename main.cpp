@@ -139,7 +139,7 @@ class RoadsAndJunctions {
     return next_available_junction_id_++;
   }
 
-  double tryJunction(int x, int y) const {
+  double tryJunction(int x, int y, double longest_road_in_use) const {
     Junction junction;
     junction.id = 100000000;  // temporary id.
     junction.x = x;
@@ -163,6 +163,14 @@ class RoadsAndJunctions {
       ADD_ROAD(existing_junction.second);
     }
     #undef ADD_ROAD
+
+    // If a distance of the shortest road among newly created roads is longer
+    // then the longest load in use in the current minimum spanning tree,
+    // those newly created roads never be used. Thus, we can skip further
+    // evaluation.
+    if (sorted_tmp_roads.begin()->distance + J_COST >= longest_road_in_use) {
+      return 1e8;
+    }
 
     double score = 0;
     const int numPointsToConnect = NC + junctions.size() + 1;
@@ -254,12 +262,28 @@ class RoadsAndJunctions {
     return score;
   }
 
+  double getLongestRoadInUse() {
+    const int numPointsToConnect = NC + junctions.size();
+    DisjointSet dset;
+    for (const Road& road : sorted_roads) {
+      int id1 = dset.FindSet(road.from);
+      int id2 = dset.FindSet(road.to);
+      if (id1 == id2) continue;
+      dset.MergeSet(id1, id2);
+      if (dset.LargestSetSize() == numPointsToConnect) return road.distance;
+    }
+    // This should never happen.
+    debug("Oops. Something wrong happens at getLongestRoadInUse.");
+    return 100000000;
+  }
+
   double optimize(int granularity) {
     debug("start optimize: granularity = " << granularity << endl);
 
     bool updated = true;
     double best_score = calculateScore();
     double prev_score = best_score;
+    double longest_road_in_use = getLongestRoadInUse();
     int best_x, best_y;
     while (updated && junctions.size() + 1 < MAX_NJ) {
       if (normalizedTime() > 0.8) {
@@ -279,7 +303,7 @@ class RoadsAndJunctions {
           x = min(x, S);
           y = min(y, S);
           if (areamap[x][y]) continue;
-          double score = tryJunction(x, y);
+          double score = tryJunction(x, y, longest_road_in_use);
           if (score < best_score) {
             best_score = score;
             best_x = x;
@@ -290,8 +314,10 @@ class RoadsAndJunctions {
       }
       if (updated) {
         if ((prev_score - best_score) * (1.0 - F_PROB) > J_COST) {
-          debug2("prev: " << prev_score << ", now: " << best_score << endl);
           addJunction(best_x, best_y);
+          longest_road_in_use = getLongestRoadInUse();
+          debug2("prev: " << prev_score << ", now: " << best_score
+                 << ", longest: " << longest_road_in_use << endl);
           prev_score = best_score;
         } else {
           updated = false;
