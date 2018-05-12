@@ -147,11 +147,13 @@ class RoadsAndJunctions {
 
     set<Road> sorted_tmp_roads;
 
-    #define ADD_ROAD(x) \
+    // Note: use define over lambda because template is not supported in
+    // lambda yet. It's coming in C++20!
+    #define ADD_ROAD(T) \
       Road road; \
-      road.from = min(x.id, junction.id); \
-      road.to = max(x.id, junction.id); \
-      road.distance = distance(x, junction); \
+      road.from = min(T.id, junction.id); \
+      road.to = max(T.id, junction.id); \
+      road.distance = distance(T, junction); \
       sorted_tmp_roads.emplace(move(road))
 
     for (const auto& city : cities) {
@@ -192,11 +194,13 @@ class RoadsAndJunctions {
     junction.x = x;
     junction.y = y;
 
-    #define ADD_ROAD(x) \
+    // Note: use define over lambda because template is not supported in
+    // lambda yet. It's coming in C++20!
+    #define ADD_ROAD(T) \
       Road road; \
-      road.from = min(x.id, junction.id); \
-      road.to = max(x.id, junction.id); \
-      road.distance = distance(x, junction); \
+      road.from = min(T.id, junction.id); \
+      road.to = max(T.id, junction.id); \
+      road.distance = distance(T, junction); \
       sorted_roads.emplace(move(road))
 
     for (const auto& city : cities) {
@@ -217,11 +221,13 @@ class RoadsAndJunctions {
     junctions.erase(junction_id);
     areamap[junction.x][junction.y] = 0;
 
-    #define REMOVE_ROAD(x) \
+    // Note: use define over lambda because template is not supported in
+    // lambda yet. It's coming in C++20!
+    #define REMOVE_ROAD(T) \
       Road road; \
-      road.from = min(x.id, junction.id); \
-      road.to = max(x.id, junction.id); \
-      road.distance = distance(x, junction); \
+      road.from = min(T.id, junction.id); \
+      road.to = max(T.id, junction.id); \
+      road.distance = distance(T, junction); \
       sorted_roads.erase(road)
 
     for (const auto& city : cities) {
