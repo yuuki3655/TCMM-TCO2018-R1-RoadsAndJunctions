@@ -7,6 +7,7 @@
 #include <set>
 #include <unordered_map>
 #include <sys/time.h>
+#include <future>
 
 using namespace std;
 
@@ -20,6 +21,17 @@ using namespace std;
 #else
 #define debug(x) ;
 #define debug2(x) ;
+#endif
+#endif
+
+// I wish I could enable this for marathon match. It's prohibited.
+#ifdef ENABLE_PARALLEL_PROCESSING
+// Use 8 threads (4 * 2 = 8).
+#ifndef PARALLEL_SPLIT_X
+#define PARALLEL_SPLIT_X 4
+#endif
+#ifndef PARALLEL_SPLIT_Y
+#define PARALLEL_SPLIT_Y 2
 #endif
 #endif
 
@@ -121,8 +133,8 @@ class RoadsAndJunctions {
 
   double startTimeSec;
 
-  double getTimeSec() {
-  	static timeval tv;
+  double getTimeSec() const {
+  	timeval tv;
   	gettimeofday(&tv, NULL);
   	return tv.tv_sec + 1e-6 * tv.tv_usec;
   }
@@ -131,7 +143,7 @@ class RoadsAndJunctions {
     startTimeSec = getTimeSec();
   }
 
-  double normalizedTime() {
+  double normalizedTime() const {
     double diff = getTimeSec() - startTimeSec;
     return diff / 10.0;
   }
@@ -282,30 +294,21 @@ class RoadsAndJunctions {
     return 100000000;
   }
 
-  tuple<double, Heatmap, int> optimize(int granularity,
+  tuple<double, Heatmap, int> optimize(const int granularity,
                                        const Heatmap& prev_heatmap) {
     debug("start optimize: granularity = " << granularity << endl);
 
-    bool updated = true;
-    double best_score = calculateScore();
-    double prev_score = best_score;
-    double longest_road_in_use = getLongestRoadInUse();
-    int best_x, best_y, best_i, best_j;
-    Heatmap heatmap(granularity, vector<int>(granularity, 0));
-    int heat_count = 0;
-    while (updated && junctions.size() + 1 <= MAX_NJ) {
-      if (normalizedTime() > 0.8) {
-        debug("main loop timed out" << endl;);
-        break;
-      }
-
-      updated = false;
-      for (int i = 0; i < granularity; ++i) {
+    auto compute = [this, granularity, &prev_heatmap](
+        int i_begin, int i_end, int j_begin, int j_end,
+        double best_score, double longest_road_in_use) {
+      bool updated = false;
+      int best_x, best_y, best_i, best_j;
+      for (int i = i_begin; i < i_end; ++i) {
         if (normalizedTime() > 0.8) {
           debug("main loop timed out" << endl;);
           break;
         }
-        for (int j = 0; j < granularity; ++j) {
+        for (int j = j_begin; j < j_end; ++j) {
           if (!prev_heatmap[i/2][j/2]) continue;
 
           int x = i * S / granularity + S / (granularity * 2);
@@ -315,15 +318,68 @@ class RoadsAndJunctions {
           if (areamap[x][y]) continue;
           double score = tryJunction(x, y, longest_road_in_use);
           if (score < best_score) {
+            updated = true;
             best_score = score;
             best_x = x;
             best_y = y;
             best_i = i;
             best_j = j;
-            updated = true;
           }
         }
       }
+      return make_tuple(updated, best_score, best_x, best_y, best_i, best_j);
+    };
+
+    double best_score = calculateScore();
+    double prev_score = best_score;
+    double longest_road_in_use = getLongestRoadInUse();
+    int best_x, best_y, best_i, best_j;
+    Heatmap heatmap(granularity, vector<int>(granularity, 0));
+    int heat_count = 0;
+    bool updated = true;
+
+    while (updated && junctions.size() + 1 <= MAX_NJ) {
+      if (normalizedTime() > 0.8) {
+        debug("main loop timed out" << endl;);
+        break;
+      }
+      updated = false;
+
+      #ifdef ENABLE_PARALLEL_PROCESSING
+      vector<future<tuple<bool, double, int, int, int, int>>> tasks;
+      for (int t = 0; t < PARALLEL_SPLIT_X; ++t) {
+        for (int u = 0; u < PARALLEL_SPLIT_Y; ++u) {
+          tasks.emplace_back(
+            async(launch::async, compute,
+                  t * granularity / PARALLEL_SPLIT_X,
+                  (t + 1) * granularity / PARALLEL_SPLIT_X,
+                  u * granularity / PARALLEL_SPLIT_Y,
+                  (u + 1) * granularity / PARALLEL_SPLIT_Y,
+                  best_score, longest_road_in_use));
+        }
+      }
+      for (auto& task : tasks) {
+        bool local_updated;
+        double local_best_score;
+        int local_best_x, local_best_y, local_best_i, local_best_j;
+        tie(local_updated, local_best_score,
+            local_best_x, local_best_y,
+            local_best_i, local_best_j) = task.get();
+        if (local_updated && local_best_score < best_score) {
+          updated = local_updated;
+          best_score = local_best_score;
+          best_x = local_best_x;
+          best_y = local_best_y;
+          best_i = local_best_i;
+          best_j = local_best_j;
+        }
+      }
+      #else
+      tie(updated, best_score, best_x, best_y, best_i, best_j) =
+          compute(0, granularity, 0, granularity,
+                  best_score, longest_road_in_use);
+      #endif
+
       if (updated) {
         if ((prev_score - best_score) * (1.0 - F_PROB) > J_COST) {
           addJunction(best_x, best_y);
