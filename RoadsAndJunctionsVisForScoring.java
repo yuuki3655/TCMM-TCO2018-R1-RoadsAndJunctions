@@ -24,7 +24,7 @@ class Pnt {
     }
 }
 
-public class RoadsAndJunctionsVis {
+public class RoadsAndJunctionsVisForScoring {
     static int minS = 100, maxS = 1000;
     static int minNC = 10, maxNC = 100;
     static double minJC = 0, maxJC = 10;
@@ -353,7 +353,7 @@ public class RoadsAndJunctionsVis {
         } catch (Exception e) { e.printStackTrace(); }
     }
     // -----------------------------------------
-    public RoadsAndJunctionsVis(String seed) {
+    public RoadsAndJunctionsVisForScoring(String seed) {
       try {
         if (exec != null) {
             try {
@@ -365,7 +365,7 @@ public class RoadsAndJunctionsVis {
                 new ErrorReader(proc.getErrorStream()).start();
             } catch (Exception e) { e.printStackTrace(); }
         }
-        System.out.println("Score = " + runTest(seed));
+        System.out.println("seed " + seed + ": score = " + runTest(seed));
         if (proc != null)
             try { proc.destroy(); }
             catch (Exception e) { e.printStackTrace(); }
@@ -390,7 +390,7 @@ public class RoadsAndJunctionsVis {
             vis = true;
         if (vis)
             fileName = seed;
-        RoadsAndJunctionsVis f = new RoadsAndJunctionsVis(seed);
+        RoadsAndJunctionsVisForScoring f = new RoadsAndJunctionsVisForScoring(seed);
     }
     // -----------------------------------------
     void addFatalError(String message) {

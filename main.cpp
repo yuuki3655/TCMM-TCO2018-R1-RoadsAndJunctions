@@ -263,6 +263,11 @@ class RoadsAndJunctions {
     J_COST = junctionCost;
     F_PROB = failureProbability;
 
+    debug2("S = " << S << endl);
+    debug2("NC = " << NC << endl);
+    debug2("JCost = " << J_COST << endl);
+    debug2("FProb = " << F_PROB << endl);
+
     resetJunctionId();
 
     cities.reserve(NC);
