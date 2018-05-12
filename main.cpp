@@ -295,12 +295,14 @@ class RoadsAndJunctions {
   }
 
   tuple<double, Heatmap, int> optimize(const int granularity,
-                                       const Heatmap& prev_heatmap) {
-    debug("start optimize: granularity = " << granularity << endl);
+                                       const Heatmap& prev_heatmap,
+                                       const bool enable_banning) {
+    debug("start optimize: granularity = " << granularity
+          << ", banning = " << enable_banning << endl);
 
     vector<vector<int>> banned(granularity, vector<int>(granularity, 0));
 
-    auto compute = [this, granularity, &prev_heatmap, &banned](
+    auto compute = [this, granularity, &prev_heatmap, &banned, enable_banning](
         int i_begin, int i_end, int j_begin, int j_end,
         double best_score, double longest_road_in_use) {
       bool updated = false;
@@ -313,7 +315,7 @@ class RoadsAndJunctions {
         }
         for (int j = j_begin; j < j_end; ++j) {
           if (!prev_heatmap[i/2][j/2]) continue;
-          if (banned[i][j]) continue;
+          if (enable_banning && banned[i][j]) continue;
 
           int x = i * S / granularity + S / (granularity * 2);
           int y = j * S / granularity + S / (granularity * 2);
@@ -471,27 +473,31 @@ class RoadsAndJunctions {
 
     double best_score = 1e8;
     unordered_map<int, Junction> best_junctions;
-    for(int initial_granularity = 16; ; initial_granularity *= 2) {
-      initial_granularity = min(initial_granularity, S + 1);
-      Heatmap heatmap(initial_granularity, vector<int>(initial_granularity, 1));
-      debug("initial_granularity = " << initial_granularity << endl);
-      for (int granularity = initial_granularity; ; granularity *= 2) {
-        granularity = min(granularity, S + 1);
-        double score;
-        int heat_count;
-        tie(score, heatmap, heat_count) = optimize(granularity, heatmap);
-        if (score < best_score) {
-          best_score = score;
-          best_junctions = junctions;
+    for (int enable_banning = 1; enable_banning >= 0; --enable_banning) {
+      for(int initial_granularity = 16; ; initial_granularity *= 2) {
+        initial_granularity = min(initial_granularity, S + 1);
+        Heatmap heatmap(initial_granularity, vector<int>(initial_granularity, 1));
+        debug("initial_granularity = " << initial_granularity << endl);
+        for (int granularity = initial_granularity; ; granularity *= 2) {
+          granularity = min(granularity, S + 1);
+          double score;
+          int heat_count;
+          tie(score, heatmap, heat_count) =
+              optimize(granularity, heatmap, enable_banning);
+          if (score < best_score) {
+            best_score = score;
+            best_junctions = junctions;
+          }
+          while (!junctions.empty()) {
+            removeJunction(junctions.begin()->first);
+          }
+          if (heat_count == 0) break;
+          if (granularity == S + 1) break;
+          if (normalizedTime() > 0.7) break;
         }
-        while (!junctions.empty()) {
-          removeJunction(junctions.begin()->first);
-        }
-        if (heat_count == 0) break;
-        if (granularity == S + 1) break;
+        if (initial_granularity == S + 1) break;
         if (normalizedTime() > 0.7) break;
       }
-      if (initial_granularity == S + 1) break;
       if (normalizedTime() > 0.7) break;
     }
     for (const auto& junction : best_junctions) {
