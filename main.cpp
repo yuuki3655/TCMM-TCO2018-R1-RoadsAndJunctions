@@ -282,7 +282,8 @@ class RoadsAndJunctions {
     return 100000000;
   }
 
-  pair<double, Heatmap> optimize(int granularity, const Heatmap& prev_heatmap) {
+  tuple<double, Heatmap, int> optimize(int granularity,
+                                       const Heatmap& prev_heatmap) {
     debug("start optimize: granularity = " << granularity << endl);
 
     bool updated = true;
@@ -291,6 +292,7 @@ class RoadsAndJunctions {
     double longest_road_in_use = getLongestRoadInUse();
     int best_x, best_y, best_i, best_j;
     Heatmap heatmap(granularity, vector<int>(granularity, 0));
+    int heat_count = 0;
     while (updated && junctions.size() + 1 < MAX_NJ) {
       if (normalizedTime() > 0.8) {
         debug("main loop timed out" << endl;);
@@ -327,6 +329,7 @@ class RoadsAndJunctions {
           addJunction(best_x, best_y);
           longest_road_in_use = getLongestRoadInUse();
           heatmap[best_i][best_j] = 1;
+          ++heat_count;
           debug2("prev: " << prev_score << ", now: " << best_score
                  << ", longest: " << longest_road_in_use << endl);
           prev_score = best_score;
@@ -336,7 +339,8 @@ class RoadsAndJunctions {
       }
     }
     debug("score = " << prev_score << endl);
-    return make_pair(move(prev_score), move(heatmap));
+    debug("heat_count = " << heat_count << endl);
+    return make_tuple(move(prev_score), move(heatmap), move(heat_count));
   }
 
  public:
@@ -390,7 +394,8 @@ class RoadsAndJunctions {
       for (int granularity = initial_granularity; ; granularity *= 2) {
         granularity = min(granularity, S + 1);
         double score;
-        tie(score, heatmap) = optimize(granularity, heatmap);
+        int heat_count;
+        tie(score, heatmap, heat_count) = optimize(granularity, heatmap);
         if (score < best_score) {
           best_score = score;
           best_junctions = junctions;
@@ -398,6 +403,7 @@ class RoadsAndJunctions {
         while (!junctions.empty()) {
           removeJunction(junctions.begin()->first);
         }
+        if (heat_count == 0) break;
         if (granularity == S + 1) break;
         if (normalizedTime() > 0.7) break;
       }
