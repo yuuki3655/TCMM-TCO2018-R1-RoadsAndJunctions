@@ -53,10 +53,13 @@ private:
   int largest_set_size_ = 1;
 };
 
-const int MAX_C = 1000;
-const int MAX_NC = 100;
-const double MAX_JUNCTION_COST = 10.0;
-const double MAX_FAILURE_PROB = 0.4;
+
+// These values are just for documentation purpose.
+//
+// const int MAX_C = 1000;
+// const int MAX_NC = 100;
+// const double MAX_JUNCTION_COST = 10.0;
+// const double MAX_FAILURE_PROB = 0.4;
 
 struct Road {
   // from < to.
