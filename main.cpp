@@ -338,8 +338,7 @@ class RoadsAndJunctions {
         }
       }
     }
-    debug("score = " << prev_score << endl);
-    debug("heat_count = " << heat_count << endl);
+    debug("score = " << prev_score << ", heat_count = " << heat_count << endl);
     return make_tuple(move(prev_score), move(heatmap), move(heat_count));
   }
 
@@ -390,7 +389,7 @@ class RoadsAndJunctions {
     for(int initial_granularity = 16; ; initial_granularity *= 2) {
       initial_granularity = min(initial_granularity, S + 1);
       Heatmap heatmap(initial_granularity, vector<int>(initial_granularity, 1));
-      debug2("initial_granularity = " << initial_granularity << endl);
+      debug("initial_granularity = " << initial_granularity << endl);
       for (int granularity = initial_granularity; ; granularity *= 2) {
         granularity = min(granularity, S + 1);
         double score;
