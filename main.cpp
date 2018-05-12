@@ -103,6 +103,8 @@ inline double distance(const S& a, const T& b) {
   return sqrt(dx*dx + dy*dy);
 }
 
+typedef vector<vector<int>> Heatmap;
+
 class RoadsAndJunctions {
  private:
   int S;
@@ -280,14 +282,15 @@ class RoadsAndJunctions {
     return 100000000;
   }
 
-  double optimize(int granularity) {
+  pair<double, Heatmap> optimize(int granularity, const Heatmap& prev_heatmap) {
     debug("start optimize: granularity = " << granularity << endl);
 
     bool updated = true;
     double best_score = calculateScore();
     double prev_score = best_score;
     double longest_road_in_use = getLongestRoadInUse();
-    int best_x, best_y;
+    int best_x, best_y, best_i, best_j;
+    Heatmap heatmap(granularity, vector<int>(granularity, 0));
     while (updated && junctions.size() + 1 < MAX_NJ) {
       if (normalizedTime() > 0.8) {
         debug("main loop timed out" << endl;);
@@ -295,12 +298,14 @@ class RoadsAndJunctions {
       }
 
       updated = false;
-      for (int i = 0; i <= granularity; ++i) {
+      for (int i = 0; i < granularity; ++i) {
         if (normalizedTime() > 0.8) {
           debug("main loop timed out" << endl;);
           break;
         }
-        for (int j = 0; j <= granularity; ++j) {
+        for (int j = 0; j < granularity; ++j) {
+          if (!prev_heatmap[i/2][j/2]) continue;
+
           int x = i * S / granularity + S / (granularity * 2);
           int y = j * S / granularity + S / (granularity * 2);
           x = min(x, S);
@@ -311,6 +316,8 @@ class RoadsAndJunctions {
             best_score = score;
             best_x = x;
             best_y = y;
+            best_i = i;
+            best_j = j;
             updated = true;
           }
         }
@@ -319,6 +326,7 @@ class RoadsAndJunctions {
         if ((prev_score - best_score) * (1.0 - F_PROB) > J_COST) {
           addJunction(best_x, best_y);
           longest_road_in_use = getLongestRoadInUse();
+          heatmap[best_i][best_j] = 1;
           debug2("prev: " << prev_score << ", now: " << best_score
                  << ", longest: " << longest_road_in_use << endl);
           prev_score = best_score;
@@ -328,7 +336,7 @@ class RoadsAndJunctions {
       }
     }
     debug("score = " << prev_score << endl);
-    return prev_score;
+    return make_pair(move(prev_score), move(heatmap));
   }
 
  public:
@@ -375,17 +383,25 @@ class RoadsAndJunctions {
 
     double best_score = 1e8;
     unordered_map<int, Junction> best_junctions;
-    for (int granularity = 32; ; granularity *= 2) {
-      granularity = min(granularity, S);
-      double score = optimize(granularity);
-      if (score < best_score) {
-        best_score = score;
-        best_junctions = junctions;
+    for(int initial_granularity = 16; ; initial_granularity *= 2) {
+      initial_granularity = min(initial_granularity, S + 1);
+      Heatmap heatmap(initial_granularity, vector<int>(initial_granularity, 1));
+      debug2("initial_granularity = " << initial_granularity << endl);
+      for (int granularity = initial_granularity; ; granularity *= 2) {
+        granularity = min(granularity, S + 1);
+        double score;
+        tie(score, heatmap) = optimize(granularity, heatmap);
+        if (score < best_score) {
+          best_score = score;
+          best_junctions = junctions;
+        }
+        while (!junctions.empty()) {
+          removeJunction(junctions.begin()->first);
+        }
+        if (granularity == S + 1) break;
+        if (normalizedTime() > 0.7) break;
       }
-      while (!junctions.empty()) {
-        removeJunction(junctions.begin()->first);
-      }
-      if (granularity == S) break;
+      if (initial_granularity == S + 1) break;
       if (normalizedTime() > 0.7) break;
     }
     for (const auto& junction : best_junctions) {
