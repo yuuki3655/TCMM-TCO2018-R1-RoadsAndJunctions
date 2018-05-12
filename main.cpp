@@ -49,19 +49,19 @@ public:
     }
     return x != y;
   }
-  inline int FindSet(int x) {
+  inline int FindSet(int x) const {
     int id = id_.emplace(x, -1).first->second;
     return id < 0 ? x : id_[x] = FindSet(id);
   }
-  inline int Size(int x) {
+  inline int Size(int x) const {
     return -id_[FindSet(x)];
   }
-  inline int LargestSetSize() {
+  inline int LargestSetSize() const {
     return largest_set_size_;
   }
 
 private:
-  unordered_map<int, int> id_;
+  mutable unordered_map<int, int> id_;
   int largest_set_size_ = 1;
 };
 
@@ -264,7 +264,7 @@ class RoadsAndJunctions {
     #undef REMOVE_ROAD
   }
 
-  double calculateScore() {
+  double calculateScore() const {
     double score = 0;
     const int numPointsToConnect = NC + junctions.size();
     DisjointSet dset;
@@ -279,7 +279,7 @@ class RoadsAndJunctions {
     return score;
   }
 
-  double getLongestRoadInUse() {
+  double getLongestRoadInUse() const {
     const int numPointsToConnect = NC + junctions.size();
     DisjointSet dset;
     for (const Road& road : sorted_roads) {
