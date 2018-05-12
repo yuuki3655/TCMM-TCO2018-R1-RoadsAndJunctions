@@ -139,7 +139,7 @@ class RoadsAndJunctions {
     return next_available_junction_id_++;
   }
 
-  int tryJunction(int x, int y) const {
+  double tryJunction(int x, int y) const {
     Junction junction;
     junction.id = 100000000;  // temporary id.
     junction.x = x;
