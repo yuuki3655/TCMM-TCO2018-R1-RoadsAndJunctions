@@ -470,48 +470,79 @@ class RoadsAndJunctions {
           }
         }
 
-        double ev = (prev_score + J_COST) * F_PROB
-            + (best_score + J_COST) * (1.0 - F_PROB);
-        if (ev < prev_score) {
-          int added_junction_id = addJunction(best_x, best_y);
+        auto compute_ev =
+            [this, best_x, best_y,
+             longest_road_in_use, prev_score](int num_new_junctions) {
+          double ev = 0;
+          function<void(int,double,double)> internal =
+              [&](int remaining, double cur_prob, double cur_score) {
+            if (remaining <= 0) {
+              ev += cur_prob * cur_score;
+              return;
+            }
+            // Case 1. Failed janction construction.
+            internal(remaining - 1, cur_prob * F_PROB, cur_score + J_COST);
+            // Case 2. Successful janction construction.
+            for (int i = 0; i < 3; ++i) {
+              for (int j = 0; j < 3; ++j) {
+                int x = max(0, min(best_x + ((i + 1) % 3) - 1, S));
+                int y = max(0, min(best_y + ((j + 1) % 3) - 1, S));
+                if (areamap[x][y]) continue;
+                if (remaining == 1) {
+                  double score = tryAddJunction(x, y, longest_road_in_use);
+                  internal(0, cur_prob * (1.0 - F_PROB), score);
+                } else {
+                  int j_id = addJunction(x, y);
+                  double score = calculateScore();
+                  internal(remaining - 1, cur_prob * (1.0 - F_PROB), score);
+                  removeJunction(j_id);
+                }
+                return;
+              }
+            }
+          };
+          internal(num_new_junctions, 1.0, prev_score);
+          return ev;
+        };
+
+        // i.e. We create up to 1 + MAX_REDUNDANCY points for one location.
+        const int MAX_REDUNDANCY = 4;
+        int best_r = 0;
+        double best_ev = 1e8;
+        for (int r = 0; r <= MAX_REDUNDANCY; ++r) {
+          double ev = compute_ev(1 + r);
+          if (ev < best_ev) {
+            best_ev = ev;
+            best_r = r;
+          } else {
+            // If E.V. didn't improve by adding one redundancy, no need to
+            // try adding more.
+            break;
+          }
+        }
+
+        if (best_ev < prev_score) {
+          addJunction(best_x, best_y);
+          if (best_r) {
+            for (int i = 0, r = best_r; i < 3 && r; ++i) {
+              for (int j = 0; j < 3 && r; ++j) {
+                int x = max(0, min(best_x + ((i + 1) % 3) - 1, S));
+                int y = max(0, min(best_y + ((j + 1) % 3) - 1, S));
+                if (areamap[x][y]) continue;
+                addJunction(x, y);
+                --r;
+              }
+            }
+            best_score = calculateScore();
+          }
+          prev_score = best_score;
           longest_road_in_use = getLongestRoadInUse();
           heatmap[best_i][best_j] = 1;
           ++heat_count;
-          debug2("prev: " << prev_score << ", now: " << best_score
-                 << ", longest: " << longest_road_in_use << endl);
 
-          bool redundant_point_creation_done = false;
-          for (int i = 0; i < 3; ++i) {
-            for (int j = 0; j < 3; ++j) {
-              int x = max(0, min(best_x + i - 1, S));
-              int y = max(0, min(best_y + j - 1, S));
-              if (areamap[x][y]) continue;
-              double score = tryAddJunction(x, y, longest_road_in_use);
-              double failed_failed =
-                  (prev_score + J_COST * 2) * F_PROB * F_PROB;
-              double failed_success =
-                  (tryMoveJunction(added_junction_id, x, y) + J_COST * 2)
-                  * F_PROB * (1.0 - F_PROB);
-              double success_failed =
-                  (best_score + J_COST * 2) * (1.0 - F_PROB) * F_PROB;
-              double success_success =
-                  (score + J_COST * 2) * (1.0 - F_PROB) * (1.0 - F_PROB);
-              double ev2 =
-                  failed_failed + failed_success
-                  + success_failed + success_success;
-              if (ev2 < ev) {
-                debug2("adding extra points: " << ev2 << " < " << ev << endl);
-                addJunction(x, y);
-                longest_road_in_use = getLongestRoadInUse();
-                best_score = score;
-              }
-              redundant_point_creation_done = true;
-              break;
-            }
-            if (redundant_point_creation_done) break;
-          }
-
-          prev_score = best_score;
+          debug("score = " << best_score << ", ev = " << best_ev
+                 << ", redundancy = " << best_r
+                 << ", longest = " << longest_road_in_use << endl);
         } else {
           updated = false;
         }
@@ -531,11 +562,6 @@ class RoadsAndJunctions {
     MAX_NJ = 2 * NC;
     J_COST = junctionCost;
     F_PROB = failureProbability;
-
-    debug2("S = " << S << endl);
-    debug2("NC = " << NC << endl);
-    debug2("JCost = " << J_COST << endl);
-    debug2("FProb = " << F_PROB << endl);
 
     resetJunctionId();
 
@@ -609,6 +635,10 @@ class RoadsAndJunctions {
     debug("buildJunctions finished: " << normalizedTime() << endl);
     debug("build " << junctions.size() << " / " << MAX_NJ
           << " junctions" << endl);
+    debug("S = " << S << endl);
+    debug("NC = " << NC << endl);
+    debug("JCost = " << J_COST << endl);
+    debug("FProb = " << F_PROB << endl);
 
     return retValue;
   }
