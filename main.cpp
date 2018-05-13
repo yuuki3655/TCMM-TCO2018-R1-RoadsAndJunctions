@@ -108,11 +108,15 @@ struct Junction {
   int y;
 };
 
+inline double distance2(int x1, int y1, int x2, int y2) {
+  int dx = x2 - x1;
+  int dy = y2 - y1;
+  return dx * dx + dy * dy;
+}
+
 template<typename S, typename T>
 inline double distance(const S& a, const T& b) {
-  int dx = b.x - a.x;
-  int dy = b.y - a.y;
-  return sqrt(dx*dx + dy*dy);
+  return sqrt(distance2(a.x, a.y, b.x, b.y));
 }
 
 typedef vector<vector<int>> Heatmap;
@@ -359,10 +363,20 @@ class RoadsAndJunctions {
           << ", banning = " << enable_banning << endl);
 
     vector<vector<int>> banned(granularity, vector<int>(granularity, 0));
+    vector<vector<double>> score_diff_cache(
+        granularity, vector<double>(granularity, 0));
 
-    auto compute = [this, granularity, &prev_heatmap, &banned, enable_banning](
-        int i_begin, int i_end, int j_begin, int j_end,
-        double best_score, double longest_road_in_use) {
+    auto compute =
+        [this, granularity, &prev_heatmap, &banned, &score_diff_cache,
+         enable_banning] (
+            int i_begin, int i_end, int j_begin, int j_end,
+            double best_score, double longest_road_in_use,
+            int last_updated_i, int last_updated_j) {
+
+      auto convert_to_area_coord = [this, granularity](int i) {
+        return min(i * S / granularity + S / (granularity * 2), S);
+      };
+
       bool updated = false;
       double prev_score = best_score;
       int best_x, best_y, best_i, best_j;
@@ -375,12 +389,22 @@ class RoadsAndJunctions {
           if (!prev_heatmap[i/2][j/2]) continue;
           if (enable_banning && banned[i][j]) continue;
 
-          int x = i * S / granularity + S / (granularity * 2);
-          int y = j * S / granularity + S / (granularity * 2);
-          x = min(x, S);
-          y = min(y, S);
+          int x = convert_to_area_coord(i);
+          int y = convert_to_area_coord(j);
           if (areamap[x][y]) continue;
-          double score = tryAddJunction(x, y, longest_road_in_use);
+
+          double score = score_diff_cache[i][j];
+          if (score == 0 ||
+              distance2(x, y,
+                        convert_to_area_coord(last_updated_i),
+                        convert_to_area_coord(last_updated_j))
+              < longest_road_in_use * longest_road_in_use) {
+            score = tryAddJunction(x, y, longest_road_in_use);
+            score_diff_cache[i][j] = score - prev_score;
+          } else {
+            score += prev_score;
+          }
+
           if (score < best_score) {
             updated = true;
             best_score = score;
@@ -411,6 +435,9 @@ class RoadsAndJunctions {
       }
       updated = false;
 
+      int prev_best_i = best_i;
+      int prev_best_j = best_j;
+
       #ifdef ENABLE_PARALLEL_PROCESSING
       vector<future<tuple<bool, double, int, int, int, int>>> tasks;
       for (int t = 0; t < PARALLEL_SPLIT_X; ++t) {
@@ -421,7 +448,8 @@ class RoadsAndJunctions {
                   (t + 1) * granularity / PARALLEL_SPLIT_X,
                   u * granularity / PARALLEL_SPLIT_Y,
                   (u + 1) * granularity / PARALLEL_SPLIT_Y,
-                  best_score, longest_road_in_use));
+                  best_score, longest_road_in_use,
+                  prev_best_i, prev_best_j));
         }
       }
       for (auto& task : tasks) {
@@ -443,7 +471,8 @@ class RoadsAndJunctions {
       #else
       tie(updated, best_score, best_x, best_y, best_i, best_j) =
           compute(0, granularity, 0, granularity,
-                  best_score, longest_road_in_use);
+                  best_score, longest_road_in_use,
+                  prev_best_i, prev_best_j);
       #endif
 
       if (updated) {
