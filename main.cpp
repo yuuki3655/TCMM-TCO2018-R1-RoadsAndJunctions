@@ -399,7 +399,7 @@ class RoadsAndJunctions {
     double best_score = calculateScore();
     double prev_score = best_score;
     double longest_road_in_use = getLongestRoadInUse();
-    int best_x, best_y, best_i, best_j;
+    int best_x = -1, best_y = -1, best_i = -1, best_j = -1;
     Heatmap heatmap(granularity, vector<int>(granularity, 0));
     int heat_count = 0;
     bool updated = true;
@@ -513,6 +513,7 @@ class RoadsAndJunctions {
         for (int r = 0; r <= MAX_REDUNDANCY; ++r) {
           double ev = compute_ev(1 + r);
           if (ev < best_ev) {
+            debug2("r = " << r << ", " << ev << " < " << best_ev << endl);
             best_ev = ev;
             best_r = r;
           } else {
