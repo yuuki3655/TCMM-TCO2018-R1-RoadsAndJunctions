@@ -491,11 +491,12 @@ class RoadsAndJunctions {
               if (areamap[x][y]) continue;
               if (remaining == 1) {
                 double score = tryAddJunction(x, y, longest_road_in_use);
-                internal(0, cur_prob * (1.0 - F_PROB), score);
+                internal(0, cur_prob * (1.0 - F_PROB), score + J_COST);
               } else {
                 int j_id = addJunction(x, y);
                 double score = calculateScore();
-                internal(remaining - 1, cur_prob * (1.0 - F_PROB), score);
+                internal(
+                    remaining - 1, cur_prob * (1.0 - F_PROB), score + J_COST);
                 removeJunction(j_id);
               }
               return;
