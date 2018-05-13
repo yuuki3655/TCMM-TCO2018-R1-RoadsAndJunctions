@@ -6,3 +6,4 @@ topcoder
 *.class
 release
 release_parallelized
+kruskal
