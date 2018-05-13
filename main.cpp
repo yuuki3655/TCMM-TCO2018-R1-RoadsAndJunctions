@@ -81,6 +81,7 @@ struct Road {
 };
 
 inline bool operator<(const Road& a, const Road& b) {
+  if (a.to == b.to && a.from == b.from) return false;
   if (a.distance < b.distance) {
     return true;
   }
