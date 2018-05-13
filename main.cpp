@@ -474,16 +474,18 @@ class RoadsAndJunctions {
         static const int DY_TABLE[] = {0, 0,  0, 1, -1, 1, -1,  1, -1};
         auto compute_ev =
             [this, best_x, best_y,
-             longest_road_in_use, prev_score](int num_new_junctions) {
+             longest_road_in_use, prev_score](const int num_new_junctions) {
           double ev = 0;
           function<void(int,double,double)> internal =
               [&](int remaining, double cur_prob, double cur_score) {
             if (remaining <= 0) {
-              ev += cur_prob * cur_score;
+              ev += cur_prob * (cur_score + num_new_junctions * J_COST);
               return;
             }
+
             // Case 1. Failed janction construction.
-            internal(remaining - 1, cur_prob * F_PROB, cur_score + J_COST);
+            internal(remaining - 1, cur_prob * F_PROB, cur_score);
+
             // Case 2. Successful janction construction.
             for (int i = 0; i < 9; ++i) {
               int x = max(0, min(best_x + DX_TABLE[i], S));
@@ -491,16 +493,18 @@ class RoadsAndJunctions {
               if (areamap[x][y]) continue;
               if (remaining == 1) {
                 double score = tryAddJunction(x, y, longest_road_in_use);
-                internal(0, cur_prob * (1.0 - F_PROB), score + J_COST);
+                internal(0, cur_prob * (1.0 - F_PROB), score);
               } else {
                 int j_id = addJunction(x, y);
                 double score = calculateScore();
-                internal(
-                    remaining - 1, cur_prob * (1.0 - F_PROB), score + J_COST);
+                internal(remaining - 1, cur_prob * (1.0 - F_PROB), score);
                 removeJunction(j_id);
               }
               return;
             }
+            // No available spaces.
+            debug("No available space to create redundant points.");
+            ev = 1e8;
           };
           internal(num_new_junctions, 1.0, prev_score);
           return ev;
@@ -509,7 +513,7 @@ class RoadsAndJunctions {
         // i.e. We create up to 1 + MAX_REDUNDANCY points for one location.
         const int MAX_REDUNDANCY = 4;
         int best_r = 0;
-        double best_ev = 1e8;
+        double best_ev = prev_score;
         for (int r = 0; r <= MAX_REDUNDANCY; ++r) {
           double ev = compute_ev(1 + r);
           if (ev < best_ev) {
