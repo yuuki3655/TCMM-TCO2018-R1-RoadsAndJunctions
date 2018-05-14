@@ -230,10 +230,16 @@ class RoadsAndJunctions {
       if (compute(*tmp_road_iter)) return score;
       ++tmp_road_iter;
     }
+
+    // This should never happen.
+    debug("Oops. Something wrong happens at tryAddJunction." << endl);
     return score;
   }
 
-  double tryMoveJunction(int junction_id, int x, int y) const {
+  pair<double, set<Point>> tryAddJunctionAndComputeAffectedPoints(
+      int x, int y, const set<Road>& roads_in_use) const {
+    const double longest_road_in_use = roads_in_use.rbegin()->distance;
+
     Junction junction;
     junction.id = 100000000;  // temporary id.
     junction.x = x;
@@ -258,33 +264,68 @@ class RoadsAndJunctions {
     }
     #undef ADD_ROAD
 
+    // If a distance of the shortest road among newly created roads is longer
+    // then the longest load in use in the current minimum spanning tree,
+    // those newly created roads never be used. Thus, we can skip further
+    // evaluation.
+    if (sorted_tmp_roads.begin()->distance + J_COST >= longest_road_in_use) {
+      set<Point> affected_points;
+      Point p;
+      p.x = x;
+      p.y = y;
+      affected_points.emplace(move(p));
+
+      Point p2;
+      int city_or_junction_id = sorted_tmp_roads.begin()->from;
+      if (city_or_junction_id < NC) {
+        p2.x = cities[city_or_junction_id].x;
+        p2.y = cities[city_or_junction_id].y;
+      } else {
+        p2.x = junctions.at(city_or_junction_id).x;
+        p2.y = junctions.at(city_or_junction_id).y;
+      }
+      affected_points.emplace(move(p2));
+
+      return make_pair(1e8, move(affected_points));
+    }
+
     double score = 0;
-    const int numPointsToConnect = NC + junctions.size();
+    const int numPointsToConnect = NC + junctions.size() + 1;
     DisjointSet dset;
-    auto compute =
-        [&dset, &score, numPointsToConnect, junction_id](const Road& road) {
-      if (road.from == junction_id || road.to == junction_id) return false;
+    set<Road> new_roads_in_use;
+    auto compute = [&dset, &score, &numPointsToConnect, &new_roads_in_use](
+        const Road& road) {
       int id1 = dset.FindSet(road.from);
       int id2 = dset.FindSet(road.to);
       if (id1 == id2) return false;
       dset.MergeSet(id1, id2);
       score += road.distance;
+      new_roads_in_use.insert(road);
       return (dset.LargestSetSize() == numPointsToConnect);
+    };
+
+    auto create_result = [this, &score, &roads_in_use, &new_roads_in_use](){
+      return make_pair(
+        score, getAffectedPoints(roads_in_use, new_roads_in_use));
     };
 
     auto tmp_road_iter = sorted_tmp_roads.begin();
     for (const Road& road : sorted_roads) {
       while (tmp_road_iter != sorted_tmp_roads.end() && *tmp_road_iter < road) {
-        if (compute(*tmp_road_iter)) return score;
+        if (compute(*tmp_road_iter)) return create_result();
         ++tmp_road_iter;
       }
-      if (compute(road)) return score;
+      if (compute(road)) return create_result();
     }
     while (tmp_road_iter != sorted_tmp_roads.end()) {
-      if (compute(*tmp_road_iter)) return score;
+      if (compute(*tmp_road_iter)) return create_result();
       ++tmp_road_iter;
     }
-    return score;
+
+    // This should never happen.
+    debug("Oops. Something wrong happens at "
+          "tryAddJunctionAndComputeAffectedPoints." << endl);
+    return create_result();
   }
 
   int addJunction(int x, int y) {
@@ -351,6 +392,9 @@ class RoadsAndJunctions {
       score += road.distance;
       if (dset.LargestSetSize() == numPointsToConnect) return score;
     }
+
+    // This should never happen.
+    debug("Oops. Something wrong happens at calculateScore." << endl);
     return score;
   }
 
@@ -365,7 +409,7 @@ class RoadsAndJunctions {
       if (dset.LargestSetSize() == numPointsToConnect) return road.distance;
     }
     // This should never happen.
-    debug("Oops. Something wrong happens at getLongestRoadInUse.");
+    debug("Oops. Something wrong happens at getLongestRoadInUse." << endl);
     return 100000000;
   }
 
@@ -382,13 +426,15 @@ class RoadsAndJunctions {
       if (dset.LargestSetSize() == numPointsToConnect) return ret;
     }
     // This should never happen.
-    debug("Oops. Something wrong happens at getLongestRoadInUse.");
+    debug("Oops. Something wrong happens at getLongestRoadInUse." << endl);
     return ret;
   }
 
   // Note: this function doesn't support computing diffs by junction removal,
   //     and it assumes all junction IDs in roads are available in
-  //     this->junctions.
+  //     this->junctions. If unknown junction IDs are found, they are simply
+  //     ignored. (the only valid usecase is temporary junction ids called
+  //     from tryAddJunctionAndComputeAffectedPoints function).
   set<Point> getAffectedPoints(const set<Road>& prev_roads_in_use,
                                const set<Road>& curr_roads_in_use) const {
     vector<Road> affected_roads;
@@ -404,17 +450,26 @@ class RoadsAndJunctions {
       if (city_or_junction_id < NC) {
         p.x = cities[city_or_junction_id].x;
         p.y = cities[city_or_junction_id].y;
-      } else {
-        p.x = junctions.at(city_or_junction_id).x;
-        p.y = junctions.at(city_or_junction_id).y;
+        return make_pair(move(p), true);
       }
-      return p;
+
+      auto j_iter = junctions.find(city_or_junction_id);
+      if (j_iter == junctions.end()) {
+        return make_pair(move(p), false);
+      }
+      p.x = j_iter->second.x;
+      p.y = j_iter->second.y;
+      return make_pair(move(p), true);
     };
 
     set<Point> ret;
     for (const Road& road : affected_roads) {
-      ret.emplace(to_point(road.from));
-      ret.emplace(to_point(road.to));
+      Point p;
+      bool valid;
+      tie(p, valid) = to_point(road.from);
+      if (valid) ret.insert(p);
+      tie(p, valid) = to_point(road.to);
+      if (valid) ret.insert(p);
     }
     return ret;
   }
@@ -431,18 +486,22 @@ class RoadsAndJunctions {
         granularity, vector<double>(granularity, 0));
     vector<vector<int>> has_score_diff_cache(
         granularity, vector<int>(granularity, 0));
+    vector<vector<set<Point>>> affected_points_cache(
+        granularity, vector<set<Point>>(granularity));
 
     auto compute =
         [this, granularity, &prev_heatmap, &banned,
-         &score_diff_cache, &has_score_diff_cache, enable_banning] (
+         &score_diff_cache, &has_score_diff_cache, &affected_points_cache,
+         enable_banning] (
             int i_begin, int i_end, int j_begin, int j_end,
-            double best_score, double longest_road_in_use,
+            double best_score, const set<Road> roads_in_use,
             const set<Point>& affected_points) {
 
       auto convert_to_area_coord = [this, granularity](int i) {
         return min(i * S / granularity + S / (granularity * 2), S);
       };
 
+      double longest_road_in_use = roads_in_use.rbegin()->distance;
       double longest_road_in_use2 = longest_road_in_use * longest_road_in_use;
       auto in_affected_area =
           [&affected_points, longest_road_in_use2](int x, int y) {
@@ -453,13 +512,27 @@ class RoadsAndJunctions {
         }
         return false;
       };
+      auto can_use_cache =
+          [this, &in_affected_area, &has_score_diff_cache,
+           &affected_points_cache](
+              int i, int j, int x, int y) {
+        if (!has_score_diff_cache[i][j]) return false;
+        if (in_affected_area(x, y)) return false;
+        for (const Point& p : affected_points_cache[i][j]) {
+          if (in_affected_area(p.x, p.y)) return false;
+        }
+        return true;
+      };
 
       bool updated = false;
       double prev_score = best_score;
-      int best_x, best_y, best_i, best_j;
+      int best_x = -1;
+      int best_y = -1;
+      int best_i = -1;
+      int best_j = -1;
 
-      #ifdef LOCAL_DEBUG_MODE
-      bool best_is_from_cache;
+      #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
+      bool best_is_from_cache = false;
       #endif
 
       for (int i = i_begin; i < i_end; ++i) {
@@ -475,23 +548,24 @@ class RoadsAndJunctions {
           int y = convert_to_area_coord(j);
           if (areamap[x][y]) continue;
 
-          #ifdef LOCAL_DEBUG_MODE
-          bool from_cache;
+          #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
+          bool from_cache = false;
           #endif
 
           double score;
-          if (has_score_diff_cache[i][j] && !in_affected_area(x, y)) {
+          if (can_use_cache(i, j, x, y)) {
             score = score_diff_cache[i][j] + prev_score;
 
-            #ifdef LOCAL_DEBUG_MODE
+            #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
             from_cache = true;
             #endif
           } else {
-            score = tryAddJunction(x, y, longest_road_in_use);
+            tie(score, affected_points_cache[i][j]) =
+                tryAddJunctionAndComputeAffectedPoints(x, y, roads_in_use);
             score_diff_cache[i][j] = score - prev_score;
             has_score_diff_cache[i][j] = 1;
 
-            #ifdef LOCAL_DEBUG_MODE
+            #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
             from_cache = false;
             #endif
           }
@@ -504,7 +578,7 @@ class RoadsAndJunctions {
             best_i = i;
             best_j = j;
 
-            #ifdef LOCAL_DEBUG_MODE
+            #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
             best_is_from_cache = from_cache;
             #endif
           } else if (score > prev_score) {
@@ -513,12 +587,18 @@ class RoadsAndJunctions {
         }
       }
 
-      #ifdef LOCAL_DEBUG_MODE
+      #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
       if (best_is_from_cache) {
         double actual_score =
             tryAddJunction(best_x, best_y, longest_road_in_use);
         debug2("Best from cached value. cache = " << best_score
-               << " actual = " << actual_score << endl);
+               << ", actual = " << actual_score
+               << ", x = " << best_x << ", y = " << best_y << endl);
+        if (fabs(best_score - actual_score) > 1e-8) {
+          debug("Oops. There is a bug in score cache. cache = "
+                << best_score << ", actual = " << actual_score
+                << ", error = " << fabs(best_score - actual_score) << endl);
+        }
       }
       #endif
 
@@ -527,6 +607,7 @@ class RoadsAndJunctions {
 
     double best_score = calculateScore();
     double longest_road_in_use = getLongestRoadInUse();
+    set<Road> roads_in_use = getRoadsInUse();
     int best_x = -1, best_y = -1, best_i = -1, best_j = -1;
     Heatmap heatmap(granularity, vector<int>(granularity, 0));
     int heat_count = 0;
@@ -552,8 +633,7 @@ class RoadsAndJunctions {
                   (t + 1) * granularity / PARALLEL_SPLIT_X,
                   u * granularity / PARALLEL_SPLIT_Y,
                   (u + 1) * granularity / PARALLEL_SPLIT_Y,
-                  best_score, longest_road_in_use,
-                  affected_points));
+                  best_score, roads_in_use, affected_points));
         }
       }
       for (auto& task : tasks) {
@@ -575,8 +655,7 @@ class RoadsAndJunctions {
       #else
       tie(updated, best_score, best_x, best_y, best_i, best_j) =
           compute(0, granularity, 0, granularity,
-                  best_score, longest_road_in_use,
-                  affected_points);
+                  best_score, roads_in_use, affected_points);
       #endif
 
       if (updated) {
@@ -682,7 +761,7 @@ class RoadsAndJunctions {
             best_score = calculateScore();
           }
 
-          const set<Road> roads_in_use = getRoadsInUse();
+          roads_in_use = getRoadsInUse();
           longest_road_in_use = roads_in_use.rbegin()->distance;
           heatmap[best_i][best_j] = 1;
           ++heat_count;
