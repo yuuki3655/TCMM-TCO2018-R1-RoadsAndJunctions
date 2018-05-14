@@ -1,5 +1,3 @@
-// #define TOPCODER_TEST_MODE
-
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -151,18 +149,34 @@ class RoadsAndJunctions {
   double startTimeSec;
 
   double getTimeSec() const {
-  	timeval tv;
-  	gettimeofday(&tv, NULL);
-  	return tv.tv_sec + 1e-6 * tv.tv_usec;
+    #ifdef ENABLE_PARALLEL_PROCESSING
+    timeval tv;
+    #else
+    static timeval tv;
+    #endif
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + 1e-6 * tv.tv_usec;
   }
 
   void startTimer() {
     startTimeSec = getTimeSec();
   }
 
+  mutable int normalizedTimeCallCounter = 0;
+
   double normalizedTime() const {
-    double diff = getTimeSec() - startTimeSec;
-    return diff / 10.0;
+    // This is for Topcoder judge server.
+    // gettimeofday() is really slow on AWS EC2 which Topcoder's judge server
+    // is running. Here we call getTimeSec() only once per several calls of
+    // this function to aid and workaround that slowness.
+    static const int frequency = 1000;
+    static double prevResult = 0;
+    if (normalizedTimeCallCounter % frequency == 0) {
+      double diff = getTimeSec() - startTimeSec;
+      prevResult = diff / 10.0;
+    }
+    ++normalizedTimeCallCounter;
+    return prevResult;
   }
 
   int next_available_junction_id_;
@@ -536,11 +550,15 @@ class RoadsAndJunctions {
       #endif
 
       for (int i = i_begin; i < i_end; ++i) {
-        if (normalizedTime() > 0.8) {
+        if (normalizedTime() > 0.9) {
           debug("main loop timed out" << endl;);
           break;
         }
         for (int j = j_begin; j < j_end; ++j) {
+          if (normalizedTime() > 0.9) {
+            debug("main loop timed out" << endl;);
+            break;
+          }
           if (!prev_heatmap[i/2][j/2]) continue;
           if (enable_banning && banned[i][j]) continue;
 
@@ -615,7 +633,7 @@ class RoadsAndJunctions {
     bool updated = true;
 
     while (updated && junctions.size() + 1 <= MAX_NJ) {
-      if (normalizedTime() > 0.8) {
+      if (normalizedTime() > 0.85) {
         debug("main loop timed out" << endl;);
         break;
       }
@@ -844,12 +862,15 @@ class RoadsAndJunctions {
     double best_score = 1e8;
     unordered_map<int, Junction> best_junctions;
     for (int enable_banning = 1; enable_banning >= 0; --enable_banning) {
+      if (normalizedTime() > 0.8) break;
       for(int initial_granularity = 16; ; initial_granularity *= 2) {
+        if (normalizedTime() > 0.8) break;
         initial_granularity = min(initial_granularity, S + 1);
         Heatmap heatmap(initial_granularity, vector<int>(initial_granularity, 1));
         debug("--------------------------------" << endl);
         debug("initial_granularity = " << initial_granularity << endl);
         for (int granularity = initial_granularity; ; granularity *= 2) {
+          if (normalizedTime() > 0.8) break;
           granularity = min(granularity, S + 1);
           double score;
           int heat_count;
@@ -870,12 +891,9 @@ class RoadsAndJunctions {
           }
           if (heat_count == 0) break;
           if (granularity == S + 1) break;
-          if (normalizedTime() > 0.7) break;
         }
         if (initial_granularity == S + 1) break;
-        if (normalizedTime() > 0.7) break;
       }
-      if (normalizedTime() > 0.7) break;
     }
     for (const auto& junction : best_junctions) {
       addJunction(junction.second.x, junction.second.y);
@@ -901,6 +919,8 @@ class RoadsAndJunctions {
     debug("buildJunctions finished: " << normalizedTime() << endl);
     debug("build " << junctions.size() << " / " << MAX_NJ
           << " junctions" << endl);
+    debug("normalizedTime() call counter = "
+          << normalizedTimeCallCounter << endl);
     debug("S = " << S << endl);
     debug("NC = " << NC << endl);
     debug("JCost = " << J_COST << endl);
