@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <sys/time.h>
 #include <future>
+#include <iterator>
 
 using namespace std;
 
@@ -97,6 +98,17 @@ inline bool operator<(const Road& a, const Road& b) {
   return a.from < b.from;
 }
 
+struct Point {
+  int x;
+  int y;
+};
+
+inline bool operator<(const Point& a, const Point& b) {
+  if (a.x < b.x) return true;
+  if (a.x > b.x) return false;
+  return a.y < b.y;
+}
+
 struct City {
   int id;
   int x;
@@ -109,7 +121,7 @@ struct Junction {
   int y;
 };
 
-inline double distance2(int x1, int y1, int x2, int y2) {
+inline int distance2(int x1, int y1, int x2, int y2) {
   int dx = x2 - x1;
   int dy = y2 - y1;
   return dx * dx + dy * dy;
@@ -357,30 +369,99 @@ class RoadsAndJunctions {
     return 100000000;
   }
 
+  set<Road> getRoadsInUse() const {
+    set<Road> ret;
+    const int numPointsToConnect = NC + junctions.size();
+    DisjointSet dset;
+    for (const Road& road : sorted_roads) {
+      int id1 = dset.FindSet(road.from);
+      int id2 = dset.FindSet(road.to);
+      if (id1 == id2) continue;
+      dset.MergeSet(id1, id2);
+      ret.insert(road);
+      if (dset.LargestSetSize() == numPointsToConnect) return ret;
+    }
+    // This should never happen.
+    debug("Oops. Something wrong happens at getLongestRoadInUse.");
+    return ret;
+  }
+
+  // Note: this function doesn't support computing diffs by junction removal,
+  //     and it assumes all junction IDs in roads are available in
+  //     this->junctions.
+  set<Point> getAffectedPoints(const set<Road>& prev_roads_in_use,
+                               const set<Road>& curr_roads_in_use) const {
+    vector<Road> affected_roads;
+    affected_roads.reserve(NC + junctions.size());
+    set_symmetric_difference(prev_roads_in_use.begin(),
+                             prev_roads_in_use.end(),
+                             curr_roads_in_use.begin(),
+                             curr_roads_in_use.end(),
+                             back_inserter(affected_roads));
+
+    auto to_point = [this](int city_or_junction_id) {
+      Point p;
+      if (city_or_junction_id < NC) {
+        p.x = cities[city_or_junction_id].x;
+        p.y = cities[city_or_junction_id].y;
+      } else {
+        p.x = junctions.at(city_or_junction_id).x;
+        p.y = junctions.at(city_or_junction_id).y;
+      }
+      return p;
+    };
+
+    set<Point> ret;
+    for (const Road& road : affected_roads) {
+      ret.emplace(to_point(road.from));
+      ret.emplace(to_point(road.to));
+    }
+    return ret;
+  }
+
   tuple<double, Heatmap, int> optimize(const int granularity,
                                        const Heatmap& prev_heatmap,
                                        const bool enable_banning) {
-    debug("start optimize: granularity = " << granularity
+    debug(endl);
+    debug("Start optimize: granularity = " << granularity
           << ", banning = " << enable_banning << endl);
 
     vector<vector<int>> banned(granularity, vector<int>(granularity, 0));
     vector<vector<double>> score_diff_cache(
         granularity, vector<double>(granularity, 0));
+    vector<vector<int>> has_score_diff_cache(
+        granularity, vector<int>(granularity, 0));
 
     auto compute =
-        [this, granularity, &prev_heatmap, &banned, &score_diff_cache,
-         enable_banning] (
+        [this, granularity, &prev_heatmap, &banned,
+         &score_diff_cache, &has_score_diff_cache, enable_banning] (
             int i_begin, int i_end, int j_begin, int j_end,
             double best_score, double longest_road_in_use,
-            int last_updated_i, int last_updated_j) {
+            const set<Point>& affected_points) {
 
       auto convert_to_area_coord = [this, granularity](int i) {
         return min(i * S / granularity + S / (granularity * 2), S);
       };
 
+      double longest_road_in_use2 = longest_road_in_use * longest_road_in_use;
+      auto in_affected_area =
+          [&affected_points, longest_road_in_use2](int x, int y) {
+        for (const Point& p : affected_points) {
+          if (distance2(x, y, p.x, p.y) <= longest_road_in_use2) {
+            return true;
+          }
+        }
+        return false;
+      };
+
       bool updated = false;
       double prev_score = best_score;
       int best_x, best_y, best_i, best_j;
+
+      #ifdef LOCAL_DEBUG_MODE
+      bool best_is_from_cache;
+      #endif
+
       for (int i = i_begin; i < i_end; ++i) {
         if (normalizedTime() > 0.8) {
           debug("main loop timed out" << endl;);
@@ -394,16 +475,25 @@ class RoadsAndJunctions {
           int y = convert_to_area_coord(j);
           if (areamap[x][y]) continue;
 
-          double score = score_diff_cache[i][j];
-          if (score == 0 ||
-              distance2(x, y,
-                        convert_to_area_coord(last_updated_i),
-                        convert_to_area_coord(last_updated_j))
-              < longest_road_in_use * longest_road_in_use) {
+          #ifdef LOCAL_DEBUG_MODE
+          bool from_cache;
+          #endif
+
+          double score;
+          if (has_score_diff_cache[i][j] && !in_affected_area(x, y)) {
+            score = score_diff_cache[i][j] + prev_score;
+
+            #ifdef LOCAL_DEBUG_MODE
+            from_cache = true;
+            #endif
+          } else {
             score = tryAddJunction(x, y, longest_road_in_use);
             score_diff_cache[i][j] = score - prev_score;
-          } else {
-            score += prev_score;
+            has_score_diff_cache[i][j] = 1;
+
+            #ifdef LOCAL_DEBUG_MODE
+            from_cache = false;
+            #endif
           }
 
           if (score < best_score) {
@@ -413,20 +503,34 @@ class RoadsAndJunctions {
             best_y = y;
             best_i = i;
             best_j = j;
+
+            #ifdef LOCAL_DEBUG_MODE
+            best_is_from_cache = from_cache;
+            #endif
           } else if (score > prev_score) {
             banned[i][j] = 1;
           }
         }
       }
+
+      #ifdef LOCAL_DEBUG_MODE
+      if (best_is_from_cache) {
+        double actual_score =
+            tryAddJunction(best_x, best_y, longest_road_in_use);
+        debug2("Best from cached value. cache = " << best_score
+               << " actual = " << actual_score << endl);
+      }
+      #endif
+
       return make_tuple(updated, best_score, best_x, best_y, best_i, best_j);
     };
 
     double best_score = calculateScore();
-    double prev_score = best_score;
     double longest_road_in_use = getLongestRoadInUse();
     int best_x = -1, best_y = -1, best_i = -1, best_j = -1;
     Heatmap heatmap(granularity, vector<int>(granularity, 0));
     int heat_count = 0;
+    set<Point> affected_points;
     bool updated = true;
 
     while (updated && junctions.size() + 1 <= MAX_NJ) {
@@ -436,8 +540,7 @@ class RoadsAndJunctions {
       }
       updated = false;
 
-      int prev_best_i = best_i;
-      int prev_best_j = best_j;
+      const double prev_score = best_score;
 
       #ifdef ENABLE_PARALLEL_PROCESSING
       vector<future<tuple<bool, double, int, int, int, int>>> tasks;
@@ -450,7 +553,7 @@ class RoadsAndJunctions {
                   u * granularity / PARALLEL_SPLIT_Y,
                   (u + 1) * granularity / PARALLEL_SPLIT_Y,
                   best_score, longest_road_in_use,
-                  prev_best_i, prev_best_j));
+                  affected_points));
         }
       }
       for (auto& task : tasks) {
@@ -473,16 +576,18 @@ class RoadsAndJunctions {
       tie(updated, best_score, best_x, best_y, best_i, best_j) =
           compute(0, granularity, 0, granularity,
                   best_score, longest_road_in_use,
-                  prev_best_i, prev_best_j);
+                  affected_points);
       #endif
 
       if (updated) {
+        // If granularity is not 100%, search near areas of current best
+        // junction point.
+        const int original_best_x = best_x;
+        const int original_best_y = best_y;
         if (granularity != S + 1) {
           const int dsize = 5;
           const int dstep = 5;
 
-          int original_best_x = best_x;
-          int original_best_y = best_y;
           for (int i = 0; i < dstep; ++i) {
             for (int j = 0; j < dstep; ++j) {
               int x = original_best_x + (i - dstep / 2) * dsize / dstep;
@@ -490,6 +595,7 @@ class RoadsAndJunctions {
               x = max(0, min(x, S));
               y = max(0, min(y, S));
               if (x == original_best_x && y == original_best_y) continue;
+              if (areamap[x][y]) continue;
               double score = tryAddJunction(x, y, longest_road_in_use);
               if (score < best_score) {
                 best_score = score;
@@ -513,10 +619,10 @@ class RoadsAndJunctions {
               return;
             }
 
-            // Case 1. Failed janction construction.
+            // Case 1. Failed junction construction.
             internal(remaining - 1, cur_prob * F_PROB, cur_score);
 
-            // Case 2. Successful janction construction.
+            // Case 2. Successful junction construction.
             for (int i = 0; i < 9; ++i) {
               int x = max(0, min(best_x + DX_TABLE[i], S));
               int y = max(0, min(best_y + DY_TABLE[i], S));
@@ -540,24 +646,30 @@ class RoadsAndJunctions {
           return ev;
         };
 
-        // i.e. We create up to 1 + MAX_REDUNDANCY points for one location.
-        const int MAX_REDUNDANCY = 4;
-        int best_r = 0;
-        double best_ev = prev_score;
-        for (int r = 0; r <= MAX_REDUNDANCY; ++r) {
-          double ev = compute_ev(1 + r);
-          if (ev < best_ev) {
-            debug2("r = " << r << ", " << ev << " < " << best_ev << endl);
-            best_ev = ev;
-            best_r = r;
-          } else {
-            // If E.V. didn't improve by adding one redundancy, no need to
-            // try adding more.
-            break;
-          }
-        }
-
+        // Only create new junction if expected value is better than the current
+        // score.
+        double best_ev = compute_ev(1);
         if (best_ev < prev_score) {
+          // Try to improve E.V. by adding redundant junctions.
+          // i.e. We create up to 1 + MAX_REDUNDANCY points for one location.
+          const int MAX_REDUNDANCY = 4;
+          int best_r = 0;
+          for (int r = 1; r <= MAX_REDUNDANCY; ++r) {
+            double ev = compute_ev(1 + r);
+            if (ev < best_ev) {
+              debug2("r = " << r << ", " << ev << " < " << best_ev << endl);
+              best_ev = ev;
+              best_r = r;
+            } else {
+              // If E.V. didn't improve by adding one redundancy, no need to
+              // try adding more.
+              break;
+            }
+          }
+
+          debug2("Create junction at " << best_x << ", " << best_y << endl);
+          const set<Road> prev_roads_in_use = getRoadsInUse();
+
           addJunction(best_x, best_y);
           if (best_r) {
             for (int i = 1, r = best_r; i < 9 && r; ++i) {
@@ -569,21 +681,48 @@ class RoadsAndJunctions {
             }
             best_score = calculateScore();
           }
-          prev_score = best_score;
-          longest_road_in_use = getLongestRoadInUse();
+
+          const set<Road> roads_in_use = getRoadsInUse();
+          longest_road_in_use = roads_in_use.rbegin()->distance;
           heatmap[best_i][best_j] = 1;
           ++heat_count;
+          affected_points = getAffectedPoints(prev_roads_in_use, roads_in_use);
 
-          debug("score = " << best_score << ", ev = " << best_ev
+          #ifdef LOCAL_DEBUG_MODE
+          debug2("Affected points: ");
+          for (const Point& p : affected_points) {
+            debug2("(" << p.x << ", " << p.y << "), ");
+          }
+          debug2(endl);
+          #endif
+
+          debug2("ev = " << best_ev << ", prev = " << prev_score
+                 << ", raw score = " << best_score
                  << ", redundancy = " << best_r
                  << ", longest = " << longest_road_in_use << endl);
         } else {
+          debug2("Tried at " << best_x << ", " << best_y << " but ev = "
+                << best_ev << " didn't improve " << prev_score << endl);
+          debug2("original_best_x = " << original_best_x
+                << ", original_best_y = " << original_best_y << endl);
+          debug2("raw best_score = " << best_score << endl);
+          debug2("No more good junction points found. Exiting from search."
+                << endl);
+
           updated = false;
+          break;
         }
       }
     }
-    debug("score = " << prev_score << ", heat_count = " << heat_count << endl);
-    return make_tuple(move(prev_score), move(heatmap), move(heat_count));
+
+    double raw_score = calculateScore();
+    double result_score = raw_score + J_COST * junctions.size();
+    debug(endl);
+    debug("Score = " << result_score << ", raw score = " << raw_score
+          << ", junctions = " << junctions.size()
+          << ", heat_count = " << heat_count << endl);
+    debug(endl);
+    return make_tuple(move(result_score), move(heatmap), move(heat_count));
   }
 
  public:
@@ -629,6 +768,7 @@ class RoadsAndJunctions {
       for(int initial_granularity = 16; ; initial_granularity *= 2) {
         initial_granularity = min(initial_granularity, S + 1);
         Heatmap heatmap(initial_granularity, vector<int>(initial_granularity, 1));
+        debug("--------------------------------" << endl);
         debug("initial_granularity = " << initial_granularity << endl);
         for (int granularity = initial_granularity; ; granularity *= 2) {
           granularity = min(granularity, S + 1);
@@ -637,6 +777,12 @@ class RoadsAndJunctions {
           tie(score, heatmap, heat_count) =
               optimize(granularity, heatmap, enable_banning);
           if (score < best_score) {
+            debug("--------------------------------" << endl);
+            debug("Found better answer." << endl);
+            debug("score: " << best_score << " -> " << score << endl);
+            debug("junctions: " << best_junctions.size()
+                  << " -> " << junctions.size() << endl);
+            debug("--------------------------------" << endl);
             best_score = score;
             best_junctions = junctions;
           }
@@ -665,6 +811,13 @@ class RoadsAndJunctions {
           junction.second.id,
           junction_id_to_status_index_.size());
     }
+
+    debug("--------------------------------" << endl);
+    debug("Final results." << endl);
+    debug("score: " << best_score
+          << " (when all constructions succeeded)" << endl);
+    debug("junctions: " << best_junctions.size() << endl);
+    debug("--------------------------------" << endl);
 
     debug("buildJunctions finished: " << normalizedTime() << endl);
     debug("build " << junctions.size() << " / " << MAX_NJ
