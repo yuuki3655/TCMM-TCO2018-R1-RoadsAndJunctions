@@ -863,7 +863,7 @@ class RoadsAndJunctions {
     unordered_map<int, Junction> best_junctions;
     for (int enable_banning = 1; enable_banning >= 0; --enable_banning) {
       if (normalizedTime() > 0.8) break;
-      for(int initial_granularity = 16; ; initial_granularity *= 2) {
+      for(int initial_granularity = 64; ; initial_granularity *= 2) {
         if (normalizedTime() > 0.8) break;
         initial_granularity = min(initial_granularity, S + 1);
         Heatmap heatmap(initial_granularity, vector<int>(initial_granularity, 1));
