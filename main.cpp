@@ -548,21 +548,36 @@ class RoadsAndJunctions {
   // Based on http://www.prefield.com/algorithm/geometry/convex_contains.html.
   inline bool isInConvexHull(const Point& p) const {
     const int n = cities_convex_hull.size();
-    Point g = (cities_convex_hull[0] + cities_convex_hull[n/3] + cities_convex_hull[2*n/3]) / 3.0; // inner-point
+    Point g = (cities_convex_hull[0] + cities_convex_hull[n/3]
+        + cities_convex_hull[2*n/3]) / 3.0; // inner-point
     int a = 0, b = n;
-    while (a+1 < b) { // invariant: c is in fan g-P[a]-P[b]
+    while (a + 1 < b) {
+      // invariant: c is in fan g-P[a]-P[b]
       int c = (a + b) / 2;
-      if (cross(cities_convex_hull[a]-g, cities_convex_hull[c]-g) > 0) { // angle < 180 deg
-        if (cross(cities_convex_hull[a]-g, p-g) > 0 && cross(cities_convex_hull[c]-g, p-g) < 0) b = c;
-        else                                                  a = c;
+      // angle < 180 deg
+      if (cross(cities_convex_hull[a]-g, cities_convex_hull[c]-g) > 0) {
+        if (cross(cities_convex_hull[a]-g, p-g) > 0 &&
+            cross(cities_convex_hull[c]-g, p-g) < 0) {
+          b = c;
+        } else {
+          a = c;
+        }
       } else {
-        if (cross(cities_convex_hull[a]-g, p-g) < 0 && cross(cities_convex_hull[c]-g, p-g) > 0) a = c;
-        else                                                  b = c;
+        if (cross(cities_convex_hull[a]-g, p-g) < 0 &&
+            cross(cities_convex_hull[c]-g, p-g) > 0) {
+          a = c;
+        } else {
+          b = c;
+        }
       }
     }
     b %= n;
-    if (cross(cities_convex_hull[a] - p, cities_convex_hull[b] - p) < 0) return false;
-    if (cross(cities_convex_hull[a] - p, cities_convex_hull[b] - p) > 0) return true;
+    if (cross(cities_convex_hull[a] - p, cities_convex_hull[b] - p) < 0) {
+      return false;
+    }
+    if (cross(cities_convex_hull[a] - p, cities_convex_hull[b] - p) > 0) {
+      return true;
+    }
     return true;
   }
 
@@ -652,7 +667,10 @@ class RoadsAndJunctions {
           int x = convert_to_area_coord(i);
           int y = convert_to_area_coord(j);
           if (areamap[x][y]) continue;
-          if (!isInConvexHull(x, y)) continue;
+          if (!isInConvexHull(x, y)) {
+            banned[i][j] = true;
+            continue;
+          }
 
           #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
           bool from_cache = false;
