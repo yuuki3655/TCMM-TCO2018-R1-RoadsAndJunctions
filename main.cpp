@@ -203,6 +203,10 @@ class RoadsAndJunctions {
   unordered_map<int, Junction> junctions;
   unordered_map<int, int> junction_id_to_status_index_;
 
+  mutable vector<vector<double>> initial_score_diff_cache;
+  mutable vector<vector<int>> has_initial_score_diff_cache;
+  mutable vector<vector<set<Point>>> initial_affected_points_cache;
+
   double startTimeSec;
 
   double getTimeSec() const {
@@ -451,6 +455,33 @@ class RoadsAndJunctions {
     #undef REMOVE_ROAD
   }
 
+  inline pair<double, set<Point>> getInitialScore(
+    int x, int y, double prev_score, const set<Road>& roads_in_use) const {
+    if (has_initial_score_diff_cache[x][y]) {
+      return make_pair(initial_score_diff_cache[x][y] + prev_score,
+                       initial_affected_points_cache[x][y]);
+    }
+    double score;
+    tie(score, initial_affected_points_cache[x][y]) =
+        tryAddJunctionAndComputeAffectedPoints(x, y, roads_in_use);
+    initial_score_diff_cache[x][y] = score - prev_score;
+    has_initial_score_diff_cache[x][y] = true;
+    return make_pair(score, initial_affected_points_cache[x][y]);
+  }
+
+  inline double getInitialScoreOnly(
+    int x, int y, double prev_score, const set<Road>& roads_in_use) const {
+    if (has_initial_score_diff_cache[x][y]) {
+      return initial_score_diff_cache[x][y] + prev_score;
+    }
+    double score;
+    tie(score, initial_affected_points_cache[x][y]) =
+        tryAddJunctionAndComputeAffectedPoints(x, y, roads_in_use);
+    initial_score_diff_cache[x][y] = score - prev_score;
+    has_initial_score_diff_cache[x][y] = true;
+    return score;
+  }
+
   double calculateScore() const {
     double score = 0;
     const int numPointsToConnect = NC + junctions.size();
@@ -684,8 +715,13 @@ class RoadsAndJunctions {
             from_cache = true;
             #endif
           } else {
-            tie(score, affected_points_cache[i][j]) =
-                tryAddJunctionAndComputeAffectedPoints(x, y, roads_in_use);
+            if (junctions.empty()) {
+              tie(score, affected_points_cache[i][j]) =
+                  getInitialScore(x, y, prev_score, roads_in_use);
+            } else {
+              tie(score, affected_points_cache[i][j]) =
+                  tryAddJunctionAndComputeAffectedPoints(x, y, roads_in_use);
+            }
             score_diff_cache[i][j] = score - prev_score;
             has_score_diff_cache[i][j] = 1;
 
@@ -800,7 +836,12 @@ class RoadsAndJunctions {
               if (x == original_best_x && y == original_best_y) continue;
               if (areamap[x][y]) continue;
               if (!isInConvexHull(x, y)) continue;
-              double score = tryAddJunction(x, y, longest_road_in_use);
+              double score;
+              if (junctions.empty()) {
+                score = getInitialScoreOnly(x, y, prev_score, roads_in_use);
+              } else {
+                score = tryAddJunction(x, y, longest_road_in_use);
+              }
               if (score < best_score) {
                 best_score = score;
                 best_x = x;
@@ -943,6 +984,13 @@ class RoadsAndJunctions {
     F_PROB = failureProbability;
 
     resetJunctionId();
+
+    initial_score_diff_cache =
+        vector<vector<double>>(S+1, vector<double>(S+1, 0));
+    has_initial_score_diff_cache =
+        vector<vector<int>>(S+1, vector<int>(S+1, 0));
+    initial_affected_points_cache =
+        vector<vector<set<Point>>>(S+1, vector<set<Point>>(S+1));
 
     cities.reserve(NC);
     for (int i = 0; i < NC; ++i) {
