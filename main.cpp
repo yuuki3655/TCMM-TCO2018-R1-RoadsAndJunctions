@@ -107,6 +107,62 @@ inline bool operator<(const Point& a, const Point& b) {
   return a.y < b.y;
 }
 
+inline Point operator+(const Point& a, const Point& b) {
+  Point p;
+  p.x = a.x + b.x;
+  p.y = a.y + b.y;
+  return p;
+}
+
+inline Point operator-(const Point& a, const Point& b) {
+  Point p;
+  p.x = a.x - b.x;
+  p.y = a.y - b.y;
+  return p;
+}
+
+inline Point operator/(const Point& a, double d) {
+  Point p;
+  p.x = a.x / d;
+  p.y = a.y / d;
+  return p;
+}
+
+inline double cross(const Point& a, const Point& b) {
+  return a.x * b.y - a.y * b.x;
+}
+
+inline double dot(const Point& a, const Point& b) {
+  return a.x * b.x + a.x * b.y;
+}
+
+inline double norm(const Point& a) {
+  return dot(a, a);
+}
+
+// based on http://www.prefield.com/algorithm/geometry/ccw.html
+int ccw(const Point &a, const Point &b, const Point &c) {
+  Point ab = b - a;
+  Point ac = c - a;
+  if (cross(ab, ac) > 0)   return +1;       // counter clockwise
+  if (cross(ab, ac) < 0)   return -1;       // clockwise
+  if (dot(ab, ac) < 0)     return +2;       // c--a--b on line
+  if (norm(ab) < norm(ac)) return -2;       // a--b--c on line
+  return 0;
+}
+
+// based on http://www.prefield.com/algorithm/geometry/convex_hull.html
+vector<Point> convexHull(const vector<Point>& ps) {
+  int n = ps.size(), k = 0;
+  vector<Point> ch(2*n);
+  for (int i = 0; i < n; ch[k++] = ps[i++]) // lower-hull
+    while (k >= 2 && ccw(ch[k-2], ch[k-1], ps[i]) <= 0) --k;
+  for (int i = n-2, t = k+1; i >= 0; ch[k++] = ps[i--]) // upper-hull
+    while (k >= t && ccw(ch[k-2], ch[k-1], ps[i]) <= 0) --k;
+  ch.resize(k-1);
+  return ch;
+}
+
 struct City {
   int id;
   int x;
@@ -141,6 +197,7 @@ class RoadsAndJunctions {
   double F_PROB;
 
   vector<City> cities;
+  vector<Point> cities_convex_hull;
   set<Road> sorted_roads;
   vector<vector<int>> areamap;
   unordered_map<int, Junction> junctions;
@@ -488,6 +545,34 @@ class RoadsAndJunctions {
     return ret;
   }
 
+  // Based on http://www.prefield.com/algorithm/geometry/convex_contains.html.
+  inline bool isInConvexHull(const Point& p) const {
+    const int n = cities_convex_hull.size();
+    Point g = (cities_convex_hull[0] + cities_convex_hull[n/3] + cities_convex_hull[2*n/3]) / 3.0; // inner-point
+    int a = 0, b = n;
+    while (a+1 < b) { // invariant: c is in fan g-P[a]-P[b]
+      int c = (a + b) / 2;
+      if (cross(cities_convex_hull[a]-g, cities_convex_hull[c]-g) > 0) { // angle < 180 deg
+        if (cross(cities_convex_hull[a]-g, p-g) > 0 && cross(cities_convex_hull[c]-g, p-g) < 0) b = c;
+        else                                                  a = c;
+      } else {
+        if (cross(cities_convex_hull[a]-g, p-g) < 0 && cross(cities_convex_hull[c]-g, p-g) > 0) a = c;
+        else                                                  b = c;
+      }
+    }
+    b %= n;
+    if (cross(cities_convex_hull[a] - p, cities_convex_hull[b] - p) < 0) return false;
+    if (cross(cities_convex_hull[a] - p, cities_convex_hull[b] - p) > 0) return true;
+    return true;
+  }
+
+  inline bool isInConvexHull(int x, int y) const {
+    Point p;
+    p.x = x;
+    p.y = y;
+    return isInConvexHull(p);
+  };
+
   tuple<double, Heatmap, int> optimize(const int granularity,
                                        const Heatmap& prev_heatmap,
                                        const bool enable_banning) {
@@ -567,6 +652,7 @@ class RoadsAndJunctions {
           int x = convert_to_area_coord(i);
           int y = convert_to_area_coord(j);
           if (areamap[x][y]) continue;
+          if (!isInConvexHull(x, y)) continue;
 
           #if defined(LOCAL_DEBUG_MODE) || defined(TOPCODER_TEST_MODE)
           bool from_cache = false;
@@ -695,6 +781,7 @@ class RoadsAndJunctions {
               y = max(0, min(y, S));
               if (x == original_best_x && y == original_best_y) continue;
               if (areamap[x][y]) continue;
+              if (!isInConvexHull(x, y)) continue;
               double score = tryAddJunction(x, y, longest_road_in_use);
               if (score < best_score) {
                 best_score = score;
@@ -726,6 +813,7 @@ class RoadsAndJunctions {
               int x = max(0, min(best_x + DX_TABLE[i], S));
               int y = max(0, min(best_y + DY_TABLE[i], S));
               if (areamap[x][y]) continue;
+              if (!isInConvexHull(x, y)) continue;
               if (remaining == 1) {
                 double score = tryAddJunction(x, y, longest_road_in_use);
                 internal(0, cur_prob * (1.0 - F_PROB), score);
@@ -775,6 +863,7 @@ class RoadsAndJunctions {
               int x = max(0, min(best_x + DX_TABLE[i], S));
               int y = max(0, min(best_y + DY_TABLE[i], S));
               if (areamap[x][y]) continue;
+              if (!isInConvexHull(x, y)) continue;
               addJunction(x, y);
               --r;
             }
@@ -845,6 +934,14 @@ class RoadsAndJunctions {
       city.y = city_locations[2*i + 1];
       cities.emplace_back(move(city));
     }
+
+    vector<Point> city_points(NC);
+    for (int i = 0; i < NC; ++i) {
+      city_points[i].x = cities[i].x;
+      city_points[i].y = cities[i].y;
+    }
+    sort(city_points.begin(), city_points.end());
+    cities_convex_hull = convexHull(city_points);
 
     areamap.resize(S+1, vector<int>(S+1, 0));
     for (const auto& city : cities) {
