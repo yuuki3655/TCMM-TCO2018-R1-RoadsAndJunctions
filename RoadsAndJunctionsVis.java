@@ -73,6 +73,10 @@ public class RoadsAndJunctionsVis {
           jCost = (((seed / 4) % 2) == 0) ? minJC : maxJC;
           jFailProb = (((seed / 8) % 2) == 0) ? minFailProb : maxFailProb;
         }
+        System.out.println("S = " + S);
+        System.out.println("NC = " + NC);
+        System.out.println("jCost = " + jCost);
+        System.out.println("jFail = " + jFailProb);
 
         // generate the cities' coordinates (all distinct)
         cities = new Pnt[NC];
@@ -128,6 +132,7 @@ public class RoadsAndJunctionsVis {
                 addFatalError("Failed to get result from buildJunctions.");
                 return -1.0;
             }
+            System.out.println("Junctions = " + (junctionsRet.length / 2));
 
             // check the return and convert it to junctions
             if (junctionsRet == null) {
@@ -365,7 +370,8 @@ public class RoadsAndJunctionsVis {
                 new ErrorReader(proc.getErrorStream()).start();
             } catch (Exception e) { e.printStackTrace(); }
         }
-        System.out.println("Score = " + runTest(seed));
+        double score = runTest(seed);
+        System.out.println("Score = " + score);
         if (proc != null)
             try { proc.destroy(); }
             catch (Exception e) { e.printStackTrace(); }
