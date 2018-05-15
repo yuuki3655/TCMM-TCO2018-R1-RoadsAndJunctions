@@ -512,7 +512,9 @@ class RoadsAndJunctions {
             const set<Point>& affected_points) {
 
       auto convert_to_area_coord = [this, granularity](int i) {
-        return min(i * S / granularity + S / (granularity * 2), S);
+        return min(
+            i * (S + 1) / granularity + (S + 1) / (granularity * 2),
+            S);
       };
 
       double longest_road_in_use = roads_in_use.rbegin()->distance;
@@ -877,12 +879,10 @@ class RoadsAndJunctions {
           tie(score, heatmap, heat_count) =
               optimize(granularity, heatmap, enable_banning);
           if (score < best_score) {
-            debug("--------------------------------" << endl);
-            debug("Found better answer." << endl);
-            debug("score: " << best_score << " -> " << score << endl);
-            debug("junctions: " << best_junctions.size()
+            debug("// Found better answer." << endl);
+            debug("// score: " << best_score << " -> " << score << endl);
+            debug("// junctions: " << best_junctions.size()
                   << " -> " << junctions.size() << endl);
-            debug("--------------------------------" << endl);
             best_score = score;
             best_junctions = junctions;
           }
