@@ -1,8 +1,6 @@
 #!/bin/bash -e
 
-make release
-
-javac RoadsAndJunctionsVis.java
+make release RoadsAndJunctionsVis
 
 echo "release"
 java RoadsAndJunctionsVis -exec "./release" -seed $1

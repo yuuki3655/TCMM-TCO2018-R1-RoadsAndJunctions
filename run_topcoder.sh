@@ -1,8 +1,6 @@
 #!/bin/bash -e
 
-make topcoder
-
-javac RoadsAndJunctionsVis.java
+make topcoder RoadsAndJunctionsVis
 
 echo "topcoder"
 java RoadsAndJunctionsVis -exec "./topcoder" -seed $1

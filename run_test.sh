@@ -1,8 +1,6 @@
 #!/bin/bash -e
 
-make main
-
-javac RoadsAndJunctionsVis.java
+make main RoadsAndJunctionsVis
 
 echo "test"
 java RoadsAndJunctionsVis -exec "./main" -seed $1
