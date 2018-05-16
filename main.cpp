@@ -10,6 +10,13 @@
 
 using namespace std;
 
+// These values are just for documentation purpose.
+//
+// const int MAX_C = 1000;
+// const int MAX_NC = 100;
+// const double MAX_JUNCTION_COST = 10.0;
+// const double MAX_FAILURE_PROB = 0.4;
+
 #ifdef LOCAL_DEBUG_MODE
 #define debug(x) cerr << x;
 #define debug2(x) cerr << x;
@@ -64,13 +71,8 @@ private:
   int largest_set_size_ = 1;
 };
 
-
-// These values are just for documentation purpose.
-//
-// const int MAX_C = 1000;
-// const int MAX_NC = 100;
-// const double MAX_JUNCTION_COST = 10.0;
-// const double MAX_FAILURE_PROB = 0.4;
+const int DX_TABLE[] = {0, 1, -1, 0,  0, 1,  1, -1, -1};
+const int DY_TABLE[] = {0, 0,  0, 1, -1, 1, -1,  1, -1};
 
 struct Road {
   // from < to.
@@ -855,84 +857,15 @@ class RoadsAndJunctions {
           }
         }
 
-        static const int DX_TABLE[] = {0, 1, -1, 0,  0, 1,  1, -1, -1};
-        static const int DY_TABLE[] = {0, 0,  0, 1, -1, 1, -1,  1, -1};
-        auto compute_ev =
-            [this, best_x, best_y,
-             longest_road_in_use, prev_score](const int num_new_junctions) {
-          double ev = 0;
-          function<void(int,double,double)> internal =
-              [&](int remaining, double cur_prob, double cur_score) {
-            if (remaining <= 0) {
-              ev += cur_prob * (cur_score + num_new_junctions * J_COST);
-              return;
-            }
-
-            // Case 1. Failed junction construction.
-            internal(remaining - 1, cur_prob * F_PROB, cur_score);
-
-            // Case 2. Successful junction construction.
-            for (int i = 0; i < 9; ++i) {
-              int x = max(0, min(best_x + DX_TABLE[i], S));
-              int y = max(0, min(best_y + DY_TABLE[i], S));
-              if (areamap[x][y]) continue;
-              if (!isInConvexHull(x, y)) continue;
-              if (remaining == 1) {
-                double score = tryAddJunction(x, y, longest_road_in_use);
-                internal(0, cur_prob * (1.0 - F_PROB), score);
-              } else {
-                int j_id = addJunction(x, y);
-                double score = calculateScore();
-                internal(remaining - 1, cur_prob * (1.0 - F_PROB), score);
-                removeJunction(j_id);
-              }
-              return;
-            }
-            // No available spaces.
-            debug("No available space to create redundant points.");
-            ev = 1e8;
-          };
-          internal(num_new_junctions, 1.0, prev_score);
-          return ev;
-        };
-
         // Only create new junction if expected value is better than the current
         // score.
-        double best_ev = compute_ev(1);
+        double best_ev = (best_score + J_COST) * (1.0 - F_PROB) +
+            (prev_score + J_COST) * F_PROB;
         if (best_ev < prev_score) {
-          // Try to improve E.V. by adding redundant junctions.
-          // i.e. We create up to 1 + MAX_REDUNDANCY points for one location.
-          const int MAX_REDUNDANCY = 4;
-          int best_r = 0;
-          for (int r = 1; r <= MAX_REDUNDANCY; ++r) {
-            double ev = compute_ev(1 + r);
-            if (ev < best_ev) {
-              debug2("r = " << r << ", " << ev << " < " << best_ev << endl);
-              best_ev = ev;
-              best_r = r;
-            } else {
-              // If E.V. didn't improve by adding one redundancy, no need to
-              // try adding more.
-              break;
-            }
-          }
-
           debug2("Create junction at " << best_x << ", " << best_y << endl);
-          const set<Road> prev_roads_in_use = getRoadsInUse();
-
+          const set<Road> prev_roads_in_use = roads_in_use;
           addJunction(best_x, best_y);
-          if (best_r) {
-            for (int i = 1, r = best_r; i < 9 && r; ++i) {
-              int x = max(0, min(best_x + DX_TABLE[i], S));
-              int y = max(0, min(best_y + DY_TABLE[i], S));
-              if (areamap[x][y]) continue;
-              if (!isInConvexHull(x, y)) continue;
-              addJunction(x, y);
-              --r;
-            }
-            best_score = calculateScore();
-          }
-
+          best_score = calculateScore();
           roads_in_use = getRoadsInUse();
           longest_road_in_use = roads_in_use.rbegin()->distance;
           heatmap[best_i][best_j] = 1;
@@ -949,7 +882,6 @@ class RoadsAndJunctions {
 
           debug2("ev = " << best_ev << ", prev = " << prev_score
                  << ", raw score = " << best_score
-                 << ", redundancy = " << best_r
                  << ", longest = " << longest_road_in_use << endl);
         } else {
           debug2("Tried at " << best_x << ", " << best_y << " but ev = "
@@ -966,6 +898,16 @@ class RoadsAndJunctions {
       }
     }
 
+    #ifdef LOCAL_DEBUG_MODE
+    debug2(endl);
+    debug2("Score = " << (calculateScore() + J_COST * junctions.size())
+           << ", raw score = " << calculateScore()
+           << ", junctions = " << junctions.size()
+           << ", heat_count = " << heat_count << endl << endl);
+    debug2("Try making redundant junctions." << endl);
+    #endif
+    maybeAddRedundantPoints();
+
     double raw_score = calculateScore();
     double result_score = raw_score + J_COST * junctions.size();
     debug(endl);
@@ -973,7 +915,104 @@ class RoadsAndJunctions {
           << ", junctions = " << junctions.size()
           << ", heat_count = " << heat_count << endl);
     debug(endl);
+
     return make_tuple(move(result_score), move(heatmap), move(heat_count));
+  }
+
+  void maybeAddRedundantPoints() {
+    auto compute_ev = [this](const int num_junctions,
+                             const int junction_x,
+                             const int junction_y,
+                             vector<Point>* result_junction_positions) {
+      double ev = 0;
+      function<void(int,double)> internal =
+          [&](int remaining, double cur_prob) {
+        if (remaining <= 0) {
+          ev += cur_prob * (calculateScore() + num_junctions * J_COST);
+          return;
+        }
+
+        const int level = num_junctions - remaining;
+
+        // Search best place to build a redundant junction.
+        int best_x = -1, best_y = -1;
+        if (level < result_junction_positions->size()) {
+          best_x = (*result_junction_positions)[level].x;
+          best_y = (*result_junction_positions)[level].y;
+        } else {
+          int best_i = -1;
+          double best_score = 1e8;
+          for (int i = 0; i < 9; ++i) {
+            int x = junction_x + DX_TABLE[i];
+            int y = junction_y + DY_TABLE[i];
+
+            if (x < 0 || x > S || y < 0 || y > S) continue;
+            if (areamap[x][y]) continue;
+
+            double score = tryAddJunction(x, y, 1e8);
+            if (score < best_score) {
+              best_score = score;
+              best_i = i;
+              best_x = x;
+              best_y = y;
+            }
+          }
+          if (best_i == -1) {
+            // No available spaces.
+            debug("No available space to create redundant points.");
+            ev = 1e8;
+            return;
+          }
+          result_junction_positions->emplace_back(Point{best_x, best_y});
+        }
+
+        // Case 1. Failed junction construction.
+        areamap[best_x][best_y] = 2;
+        internal(remaining - 1, cur_prob * F_PROB);
+        areamap[best_x][best_y] = 0;
+
+        // Case 2. Successful junction construction.
+        int j_id = addJunction(best_x, best_y);
+        internal(remaining - 1, cur_prob * (1.0 - F_PROB));
+        removeJunction(j_id);
+      };
+
+      internal(num_junctions, 1.0);
+      return ev;
+    };
+
+    // Try to improve E.V. by adding redundant junctions.
+    // i.e. We create up to 1 + MAX_REDUNDANCY points for one location.
+    static const int MAX_REDUNDANCY = 4;
+
+    auto original_junctions = junctions;
+    for (const auto& junction : original_junctions) {
+      removeJunction(junction.first);
+      debug2("maybeAddRedundantPoints for " << junction.second.x
+             << ", " << junction.second.y << endl);
+      double best_ev = calculateScore();
+      int best_r = -1;
+      vector<Point> result_positions;
+      for (int r = 0; r <= MAX_REDUNDANCY; ++r) {
+        double ev = compute_ev(1 + r,
+                               junction.second.x,
+                               junction.second.y,
+                               &result_positions);
+        if (ev < best_ev) {
+          debug2("r = " << r << ", " << ev << " < " << best_ev << endl);
+          best_ev = ev;
+          best_r = r;
+        } else {
+          // If E.V. didn't improve by adding one redundancy, no need to
+          // try adding more.
+          debug2("r = " << r << ", " << ev << " >= " << best_ev << endl);
+          break;
+        }
+      }
+      for (int r = 0; r <= best_r; ++r) {
+        addJunction(result_positions[r].x, result_positions[r].y);
+      }
+    }
   }
 
  public:
