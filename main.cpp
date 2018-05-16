@@ -407,6 +407,61 @@ class RoadsAndJunctions {
     return create_result();
   }
 
+  double tryMoveJunction(int junction_id, int x, int y) const {
+    Junction junction;
+    junction.id = 100000000;  // temporary id.
+    junction.x = x;
+    junction.y = y;
+
+    set<Road> sorted_tmp_roads;
+
+    // Note: use define over lambda because template is not supported in
+    // lambda yet. It's coming in C++20!
+    #define ADD_ROAD(T) { \
+      Road road; \
+      road.from = T.id; \
+      road.to = junction.id; \
+      road.distance = distance(T, junction); \
+      sorted_tmp_roads.emplace(move(road)); \
+    }
+
+    for (const auto& city : cities) {
+      ADD_ROAD(city);
+    }
+    for (const auto& existing_junction : junctions) {
+      ADD_ROAD(existing_junction.second);
+    }
+    #undef ADD_ROAD
+
+    double score = 0;
+    const int numPointsToConnect = NC + junctions.size();
+    DisjointSet dset;
+    auto compute =
+        [&dset, &score, numPointsToConnect, junction_id](const Road& road) {
+      if (road.from == junction_id || road.to == junction_id) return false;
+      int id1 = dset.FindSet(road.from);
+      int id2 = dset.FindSet(road.to);
+      if (id1 == id2) return false;
+      dset.MergeSet(id1, id2);
+      score += road.distance;
+      return (dset.LargestSetSize() == numPointsToConnect);
+    };
+
+    auto tmp_road_iter = sorted_tmp_roads.begin();
+    for (const Road& road : sorted_roads) {
+      while (tmp_road_iter != sorted_tmp_roads.end() && *tmp_road_iter < road) {
+        if (compute(*tmp_road_iter)) return score;
+        ++tmp_road_iter;
+      }
+      if (compute(road)) return score;
+    }
+    while (tmp_road_iter != sorted_tmp_roads.end()) {
+      if (compute(*tmp_road_iter)) return score;
+      ++tmp_road_iter;
+    }
+    return score;
+  }
+
   int addJunction(int x, int y) {
     int id = generateJunctionId();
     Junction junction;
@@ -898,6 +953,8 @@ class RoadsAndJunctions {
       }
     }
 
+    adjustJunctions();
+
     #ifdef LOCAL_DEBUG_MODE
     debug2(endl);
     debug2("Score = " << (calculateScore() + J_COST * junctions.size())
@@ -917,6 +974,62 @@ class RoadsAndJunctions {
     debug(endl);
 
     return make_tuple(move(result_score), move(heatmap), move(heat_count));
+  }
+
+  void adjustJunctions() {
+    double best_score = calculateScore();
+    auto roads_in_use = getRoadsInUse();
+    set<Point> candidate_points;
+    for (const auto& junction : junctions) {
+      candidate_points.emplace(Point{junction.second.x, junction.second.y});
+    }
+
+    debug2("Try adjusting junctions. score = " << best_score << endl);
+    while (true) {
+      bool updated = false;
+      int jid_to_move = -1, x_move_to = -1, y_move_to = -1;
+      for (const auto& junction : junctions) {
+        for (int i = 1; i < 9; ++i) {
+          int x = junction.second.x + DX_TABLE[i];
+          int y = junction.second.y + DY_TABLE[i];
+
+          if (x < 0 || x > S || y < 0 || y > S) continue;
+          if (areamap[x][y]) continue;
+          auto c_iter = candidate_points.find(Point{junction.second.x,
+                                                    junction.second.y});
+          if (c_iter == candidate_points.end()) {
+            continue;
+          }
+
+          double score = tryMoveJunction(junction.first, x, y);
+          if (score < best_score) {
+            debug2("Found: " << best_score << " -> " << score << endl);
+            best_score = score;
+            jid_to_move = junction.first;
+            x_move_to = x;
+            y_move_to = y;
+            updated = true;
+            break;
+          } else {
+            candidate_points.erase(c_iter);
+          }
+        }
+        if (updated) break;
+      }
+      if (updated) {
+        auto prev_roads_in_use = roads_in_use;
+        removeJunction(jid_to_move);
+        addJunction(x_move_to, y_move_to);
+        roads_in_use = getRoadsInUse();
+        // I really need C++17's set::merge.
+        auto affected_points =
+            getAffectedPoints(prev_roads_in_use, roads_in_use);
+        candidate_points.insert(affected_points.begin(),
+                                affected_points.end());
+      } else {
+        break;
+      }
+    }
   }
 
   void maybeAddRedundantPoints() {
