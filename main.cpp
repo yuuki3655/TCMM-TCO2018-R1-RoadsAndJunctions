@@ -989,17 +989,17 @@ class RoadsAndJunctions {
       bool updated = false;
       int jid_to_move = -1, x_move_to = -1, y_move_to = -1;
       for (const auto& junction : junctions) {
+        auto c_iter = candidate_points.find(Point{junction.second.x,
+                                                  junction.second.y});
+        if (c_iter == candidate_points.end()) {
+          continue;
+        }
         for (int i = 1; i < 9; ++i) {
           int x = junction.second.x + DX_TABLE[i];
           int y = junction.second.y + DY_TABLE[i];
 
           if (x < 0 || x > S || y < 0 || y > S) continue;
           if (areamap[x][y]) continue;
-          auto c_iter = candidate_points.find(Point{junction.second.x,
-                                                    junction.second.y});
-          if (c_iter == candidate_points.end()) {
-            continue;
-          }
 
           double score = tryMoveJunction(junction.first, x, y);
           if (score < best_score) {
@@ -1010,11 +1010,13 @@ class RoadsAndJunctions {
             y_move_to = y;
             updated = true;
             break;
-          } else {
-            candidate_points.erase(c_iter);
           }
         }
-        if (updated) break;
+        if (updated) {
+          break;
+        } else {
+          candidate_points.erase(c_iter);
+        }
       }
       if (updated) {
         auto prev_roads_in_use = roads_in_use;
