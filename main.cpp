@@ -885,15 +885,14 @@ class RoadsAndJunctions {
         const int original_best_x = best_x;
         const int original_best_y = best_y;
         if (granularity != S + 1) {
-          const int dsize = 5;
-          const int dstep = 5;
+          const int dsize = min(5, max<int>(3, (S + 1) / granularity));
+          const int dstep = dsize;
 
           for (int i = 0; i < dstep; ++i) {
             for (int j = 0; j < dstep; ++j) {
               int x = original_best_x + (i - dstep / 2) * dsize / dstep;
               int y = original_best_y + (j - dstep / 2) * dsize / dstep;
-              x = max(0, min(x, S));
-              y = max(0, min(y, S));
+              if (x < 0 || x > S || y < 0 || y > S) continue;
               if (x == original_best_x && y == original_best_y) continue;
               if (areamap[x][y]) continue;
               if (!isInConvexHull(x, y)) continue;
