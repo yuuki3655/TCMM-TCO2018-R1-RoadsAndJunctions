@@ -1125,6 +1125,9 @@ class RoadsAndJunctions {
       }
       for (int r = 0; r <= best_r; ++r) {
         addJunction(result_positions[r].x, result_positions[r].y);
+        if (junctions.size() == MAX_NJ) {
+          return;
+        }
       }
     }
   }
