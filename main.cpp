@@ -681,6 +681,7 @@ class RoadsAndJunctions {
   };
 
   tuple<double, Heatmap, int> optimize(const int granularity,
+                                       const int prev_granularity,
                                        const Heatmap& prev_heatmap,
                                        const bool enable_banning) {
     debug(endl);
@@ -696,7 +697,7 @@ class RoadsAndJunctions {
         granularity, vector<set<Point>>(granularity));
 
     auto compute =
-        [this, granularity, &prev_heatmap, &banned,
+        [this, granularity, prev_granularity, &prev_heatmap, &banned,
          &score_diff_cache, &has_score_diff_cache, &affected_points_cache,
          enable_banning] (
             int i_begin, int i_end, int j_begin, int j_end,
@@ -753,7 +754,9 @@ class RoadsAndJunctions {
             debug("main loop timed out" << endl;);
             break;
           }
-          if (!prev_heatmap[i/2][j/2]) continue;
+
+          const int prev_heatmap_index = i * prev_granularity / granularity;
+          if (!prev_heatmap[prev_heatmap_index][prev_heatmap_index]) continue;
           if (enable_banning && banned[i][j]) continue;
 
           int x = convert_to_area_coord(i);
@@ -1200,7 +1203,7 @@ class RoadsAndJunctions {
           double score;
           int heat_count;
           tie(score, heatmap, heat_count) =
-              optimize(granularity, heatmap, enable_banning);
+              optimize(granularity, heatmap.size(), heatmap, enable_banning);
           if (score < best_score) {
             debug("// Found better answer." << endl);
             debug("// score: " << best_score << " -> " << score << endl);
