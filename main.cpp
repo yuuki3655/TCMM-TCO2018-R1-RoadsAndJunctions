@@ -891,24 +891,37 @@ class RoadsAndJunctions {
           const int dsize = min(5, max<int>(3, (S + 1) / granularity));
           const int dstep = dsize;
 
-          for (int i = 0; i < dstep; ++i) {
-            for (int j = 0; j < dstep; ++j) {
-              int x = original_best_x + (i - dstep / 2) * dsize / dstep;
-              int y = original_best_y + (j - dstep / 2) * dsize / dstep;
-              if (x < 0 || x > S || y < 0 || y > S) continue;
-              if (x == original_best_x && y == original_best_y) continue;
-              if (areamap[x][y]) continue;
-              if (!isInConvexHull(x, y)) continue;
-              double score;
-              if (junctions.empty()) {
-                score = getInitialScoreOnly(x, y, prev_score, roads_in_use);
-              } else {
-                score = tryAddJunction(x, y, longest_road_in_use);
-              }
-              if (score < best_score) {
-                best_score = score;
-                best_x = x;
-                best_y = y;
+          bool found_local_update = true;
+          int current_best_x = best_x;
+          int current_best_y = best_y;
+          set<Point> searched_points;
+          while (found_local_update) {
+            found_local_update = false;
+            current_best_x = best_x;
+            current_best_y = best_y;
+            for (int i = 0; i < dstep; ++i) {
+              if (normalizedTime() > 0.9) break;
+              for (int j = 0; j < dstep; ++j) {
+                if (normalizedTime() > 0.9) break;
+                int x = current_best_x + (i - dstep / 2) * dsize / dstep;
+                int y = current_best_y + (j - dstep / 2) * dsize / dstep;
+                if (x < 0 || x > S || y < 0 || y > S) continue;
+                if (x == original_best_x && y == original_best_y) continue;
+                if (areamap[x][y]) continue;
+                if (!searched_points.insert(Point{x, y}).second) continue;
+                if (!isInConvexHull(x, y)) continue;
+                double score;
+                if (junctions.empty()) {
+                  score = getInitialScoreOnly(x, y, prev_score, roads_in_use);
+                } else {
+                  score = tryAddJunction(x, y, longest_road_in_use);
+                }
+                if (score < best_score) {
+                  found_local_update = true;
+                  best_score = score;
+                  best_x = x;
+                  best_y = y;
+                }
               }
             }
           }
